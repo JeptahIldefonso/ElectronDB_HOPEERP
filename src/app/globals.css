@@ -1,0 +1,301 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+
+  /* Surface Layers */
+  --bg: #F4F4F0;              /* Warm parchment background */
+  --bg-raised: #FFFFFF;       /* Pure white raised cards and dialogs */
+  --bg-hover: #EAEAE4;        /* Subtle hover surface */
+  --bg-subtle: #DFDFD7;       /* Soft inset borders & dividers */
+  --surface-1: #FFFFFF;       /* Cards, tables, panels */
+  --surface-2: #EAEAE4;       /* Table header, row hover (#F3F2EE), inputs */
+  --surface-3: #FFFFFF;       /* Popovers, menus, modals */
+
+  /* Foreground Ink Tones */
+  --fg: #041a24;              /* Deep brand midnight cyan (Primary Ink) */
+  --fg-muted: #1c313b;        /* Secondary reading text (high legibility) */
+  --fg-subtle: #41555f;       /* Metadata, timestamps, captions */
+  --text: #041a24;            /* Primary Obsidian Ink */
+  --text-muted: #41555f;       /* Secondary metadata */
+  --text-faint: #8ca0aa;       /* Disabled / caption */
+
+  /* Brand, Primary & Accents */
+  --accent: #041a24;          /* Core architectural brand tone */
+  --accent-dim: rgba(4, 26, 36, 0.05);
+  --accent-soft: rgba(4, 26, 36, 0.06);
+  --primary-bg: #041a24;
+  --primary-fg: #FFFFFF;
+
+  /* Hairlines & Borders */
+  --border: rgba(4, 26, 36, 0.14);
+  --border-control: rgba(4, 26, 36, 0.22);
+  --border-strong: #041a24;
+  --border-hover: #041a24;
+
+  /* Status Colors */
+  --success: #23894E;
+  --success-soft: rgba(35, 137, 78, 0.12);
+  --warning: #B45309;
+  --warning-soft: rgba(180, 83, 9, 0.12);
+  --danger: #B91C1C;
+  --danger-soft: rgba(185, 28, 28, 0.12);
+  --info: #0284C7;
+  --info-soft: rgba(2, 132, 199, 0.12);
+
+  /* Scrollbars & Selection */
+  --scrollbar-thumb: rgba(4, 26, 36, 0.25);
+  --scrollbar-thumb-hover: rgba(4, 26, 36, 0.50);
+
+  /* ERD Module Noticeable Color Coding */
+  --module-employees: #BFDBFE;
+  --module-products: #BBF7D0;
+  --module-customers: #FEF08A;
+  --module-sales: #FECACA;
+
+  /* Navy Right-Rail Panels (Matches Global Footer #041a24) */
+  --panel-navy: #041a24;
+  --panel-navy-raised: #0b2b3b;
+  --panel-text: #F1F5F9;
+  --panel-text-muted: #8FA3B8;
+  --panel-border: rgba(255, 255, 255, 0.10);
+  --panel-accent: #38BDF8;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* App Canvas & Layered Surfaces (Layered dark slates, not pure #000) */
+  --bg: #0B1117;              /* Deep obsidian app background */
+  --bg-raised: #131B24;       /* Primary raised surface */
+  --bg-hover: #1B2430;        /* Hover surface */
+  --bg-subtle: #242E3D;       /* Inset surface */
+  --surface-1: #131B24;       /* Cards, panels, table body */
+  --surface-2: #1B2430;       /* Table header, row hover, inputs */
+  --surface-3: #242E3D;       /* Popovers, menus, modals */
+
+  /* Foreground Ink Tones (Pure White & High-Contrast Slates) */
+  --fg: #FFFFFF;              /* Pure white primary text */
+  --fg-muted: #E2E8F0;        /* Secondary reading text */
+  --fg-subtle: #94A3B8;       /* Metadata, timestamps, captions */
+  --text: #FFFFFF;            /* Pure white primary text */
+  --text-muted: #CBD5E1;       /* Crisp light slate */
+  --text-faint: #94A3B8;       /* Legible muted captions */
+
+  /* Brand, Primary & Accents (Lightened for dark contrast) */
+  --accent: #58A6FF;
+  --accent-dim: rgba(88, 166, 255, 0.12);
+  --accent-soft: rgba(88, 166, 255, 0.16);
+  --primary-bg: #FFFFFF;      /* Inverted: pure white button on dark */
+  --primary-fg: #0B1117;      /* Dark ink text on light button */
+
+  /* Hairlines & Borders */
+  --border: rgba(255, 255, 255, 0.16);
+  --border-control: rgba(255, 255, 255, 0.28);  /* Control outline: passes 3:1 on all surfaces */
+  --border-strong: #FFFFFF;
+  --border-hover: #58A6FF;
+
+  /* Status Colors (Calm & Tuned for Dark Backgrounds) */
+  --success: #3ECF8E;
+  --success-soft: rgba(62, 207, 142, 0.16);
+  --warning: #F59E0B;
+  --warning-soft: rgba(245, 158, 11, 0.16);
+  --danger: #F87171;
+  --danger-soft: rgba(248, 113, 113, 0.16);
+  --info: #60A5FA;
+  --info-soft: rgba(96, 165, 250, 0.16);
+
+  /* Scrollbars & Selection */
+  --scrollbar-thumb: rgba(255, 255, 255, 0.20);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.40);
+
+  /* ERD Module Dark Color Coding */
+  --module-employees: rgba(59, 130, 246, 0.25);
+  --module-products: rgba(34, 197, 94, 0.25);
+  --module-customers: rgba(234, 179, 8, 0.25);
+  --module-sales: rgba(239, 68, 68, 0.25);
+
+  /* Navy Right-Rail Panels (Dark Mode) */
+  --panel-navy: #041a24;
+  --panel-navy-raised: #0b2b3b;
+  --panel-text: #F1F5F9;
+  --panel-text-muted: #8FA3B8;
+  --panel-border: rgba(255, 255, 255, 0.12);
+  --panel-accent: #38BDF8;
+}
+
+/* ============================================================================
+   HIGH-CONTRAST DARK MODE OVERRIDES
+   Guarantees pure white headings, crisp text, visible inputs, and dark table headers
+   ============================================================================ */
+:root[data-theme="dark"] h1,
+:root[data-theme="dark"] h2,
+:root[data-theme="dark"] h3,
+:root[data-theme="dark"] .text-\[\#041a24\],
+:root[data-theme="dark"] .text-\[\#0F172A\],
+:root[data-theme="dark"] .text-\[\#17231F\],
+:root[data-theme="dark"] .text-\[\#0C1418\],
+:root[data-theme="dark"] .text-slate-900,
+:root[data-theme="dark"] .text-black,
+:root[data-theme="dark"] .text-text {
+  color: #FFFFFF !important;
+}
+
+:root[data-theme="dark"] .text-\[\#41555f\],
+:root[data-theme="dark"] .text-\[\#52615B\],
+:root[data-theme="dark"] .text-\[\#7A8781\],
+:root[data-theme="dark"] .text-slate-500,
+:root[data-theme="dark"] .text-text-muted {
+  color: #CBD5E1 !important;
+}
+
+:root[data-theme="dark"] thead tr,
+:root[data-theme="dark"] thead th,
+:root[data-theme="dark"] .bg-\[\#F4F4F0\],
+:root[data-theme="dark"] .bg-\[\#F4F4F0\]\/70,
+:root[data-theme="dark"] .bg-\[\#F4F4F0\]\/60,
+:root[data-theme="dark"] .bg-\[\#F3F2EE\],
+:root[data-theme="dark"] .bg-\[\#F4F4F5\],
+:root[data-theme="dark"] .bg-\[\#FAFBFA\],
+:root[data-theme="dark"] .bg-\[\#FAFAFA\],
+:root[data-theme="dark"] .bg-\[\#F9FAFB\],
+:root[data-theme="dark"] .bg-\[\#F5F6F4\],
+:root[data-theme="dark"] .bg-\[\#F5F6F4\]\/70,
+:root[data-theme="dark"] .bg-\[\#F0F3F0\] {
+  background-color: var(--surface-2) !important;
+  color: #FFFFFF !important;
+}
+
+/* Hairline dividers and borders across all pages */
+:root[data-theme="dark"] .border-\[\#DDE3DE\],
+:root[data-theme="dark"] .border-\[\#CCD5CD\],
+:root[data-theme="dark"] .border-\[\#E9EDEA\],
+:root[data-theme="dark"] .border-black\/10,
+:root[data-theme="dark"] .border-black\/15 {
+  border-color: var(--border) !important;
+}
+
+/* Standalone White Cards, Panels, and Containers */
+:root[data-theme="dark"] .bg-white:not(button):not([class*="dark:bg-white"]):not(.keep-white) {
+  background-color: var(--surface-1) !important;
+}
+
+:root[data-theme="dark"] input,
+:root[data-theme="dark"] select,
+:root[data-theme="dark"] textarea {
+  background-color: var(--surface-1) !important;
+  color: #FFFFFF !important;
+  border-color: rgba(255, 255, 255, 0.25) !important;
+}
+
+:root[data-theme="dark"] input::placeholder,
+:root[data-theme="dark"] textarea::placeholder {
+  color: #94A3B8 !important;
+}
+
+:root[data-theme="dark"] button.bg-white,
+:root[data-theme="dark"] button[class*="border-black/15"],
+:root[data-theme="dark"] button[class*="border-black/10"] {
+  background-color: var(--surface-2) !important;
+  color: #FFFFFF !important;
+  border-color: rgba(255, 255, 255, 0.22) !important;
+}
+
+* {
+  border-color: var(--border);
+}
+
+html {
+  background-color: var(--bg);
+  color: var(--fg);
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  min-height: 100vh;
+  margin: 0;
+  padding: 0;
+}
+
+::selection {
+  background-color: var(--accent);
+  color: var(--primary-fg);
+}
+
+/* Numeric alignment utility for currencies and quantities */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+/* Custom Minimalist Scrollbar Physics (4px hairline) */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 1px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+/* Editorial Monochromatic Typography Utility */
+.font-editorial {
+  font-family: var(--font-editorial), Newsreader, Georgia, serif;
+}
+
+.hairline-border {
+  border: 1px solid var(--border);
+}
+
+/* Broadsheet Column Dividers */
+.broadsheet-rule {
+  border-top: 2px solid var(--fg);
+}
+
+.broadsheet-rule-thin {
+  border-top: 1px solid var(--border);
+}
+
+/* Chrome & Safari Autofill Dark-Mode Inset Match */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+textarea:-webkit-autofill,
+select:-webkit-autofill {
+  -webkit-text-fill-color: var(--fg);
+  -webkit-box-shadow: 0 0 0px 1000px var(--surface-1) inset;
+  transition: background-color 5000s ease-in-out 0s;
+}
+
+/* Print Styles for Invoices and Official Receipts (Forces pure light mode) */
+@media print {
+  :root {
+    color-scheme: light !important;
+  }
+  body {
+    background: #FFFFFF !important;
+    color: #000000 !important;
+  }
+  .no-print, nav, aside, header {
+    display: none !important;
+  }
+  .print-only {
+    display: block !important;
+  }
+  .print-break-inside-avoid {
+    break-inside: avoid;
+  }
+}

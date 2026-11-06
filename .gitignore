@@ -1,0 +1,56 @@
+# dependencies
+/node_modules
+/.pnp
+.pnp.js
+.yarn/install-state.gz
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+Thumbs.db
+*.pem
+*.bak
+*.sqlite3-journal
+*-journal
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+
+# local env files
+.env
+.env*
+*.env
+.env.local
+.env*.local
+.env.example
+
+# isolated auth credentials
+auth.db
+auth.db*
+hope.db*
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+
+# scratch and temporary files
+scratch/
+
+# AI agent configurations
+.agent/
+.agents/
+scratch/chrome-profile/
