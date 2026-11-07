@@ -382,7 +382,7 @@ export async function updateUserProfile(
   firstName: string,
   lastName: string,
   email: string,
-  role?: 'Admin' | 'User',
+  role?: UserRole,
   passwordHash?: string,
   updatedBy = 'Admin'
 ): Promise<{ success: boolean; error?: string }> {
@@ -439,5 +439,67 @@ export async function updateUserProfile(
     return { success: true };
   } catch (err: any) {
     return { success: false, error: err?.message || 'Failed to update user profile.' };
+  }
+}
+
+export async function resetUserPassword(
+  email: string,
+  passwordHash: string
+): Promise<{ success: boolean; user?: UserAccount; error?: string }> {
+  await ensureAuthDb();
+  const db = getHopeDb();
+  const cleanEmail = email.trim().toLowerCase();
+
+  const user = await db.get<any>(
+    'SELECT userId, firstName, lastName, email, role, isBlocked, status, createdAt FROM USERS WHERE LOWER(email) = LOWER(?)',
+    [cleanEmail]
+  );
+
+  if (!user) {
+    return { success: false, error: 'No registered account found with this email address.' };
+  }
+
+  if (user.isBlocked || user.status !== 'Active') {
+    return { success: false, error: 'This account has been deactivated or blocked by an administrator.' };
+  }
+
+  if (user.role !== 'Superadmin') {
+    return {
+      success: false,
+      error: 'Emergency reset is reserved for Superadmin accounts. Staff accounts are managed in User Management.',
+    };
+  }
+
+  const stamp = getStampString('EDITED', 'Superadmin Recovery');
+
+  try {
+    const update = await db.run(
+      `UPDATE USERS SET passwordHash = ?, stamp = ?
+       WHERE userId = ? AND role = 'Superadmin' AND isBlocked = 0 AND status = 'Active'`,
+      [passwordHash, stamp, user.userId]
+    );
+    if (update.changes === 0) {
+      return { success: false, error: 'This Superadmin account is inactive or blocked.' };
+    }
+
+    return {
+      success: true,
+      user: {
+        userId: user.userId,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        fullName: `${user.firstName} ${user.lastName}`.trim(),
+        role: user.role,
+        isBlocked: Boolean(user.isBlocked),
+        status: user.status,
+        stamp,
+        createdAt: user.createdAt,
+        rights: [],
+        passwordHash,
+      },
+    };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Failed to update password.' };
   }
 }

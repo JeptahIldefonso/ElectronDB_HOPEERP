@@ -23,7 +23,7 @@ export function EditUserModal({
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
-  const [role, setRole] = useState<'User' | 'Admin'>('User');
+  const [role, setRole] = useState<UserRole>('User');
   const [newPassword, setNewPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -35,7 +35,7 @@ export function EditUserModal({
       setFirstName(user.firstName || '');
       setLastName(user.lastName || '');
       setEmail(user.email || '');
-      setRole(user.role === 'Admin' ? 'Admin' : 'User');
+      setRole(user.role);
       setNewPassword('');
       setError(null);
     }
@@ -49,6 +49,11 @@ export function EditUserModal({
 
     if (!firstName.trim() || !lastName.trim() || !email.trim()) {
       setError('First name, last name, and email are required.');
+      return;
+    }
+
+    if (newPassword.trim() && newPassword.trim().length < 8) {
+      setError('New password must be at least 8 characters.');
       return;
     }
 
@@ -150,9 +155,11 @@ export function EditUserModal({
             </label>
             <select
               value={role}
-              onChange={(e) => setRole(e.target.value as 'User' | 'Admin')}
-              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs text-slate-900 dark:text-slate-100 focus:border-[#001A2B] focus:ring-1 focus:ring-[#001A2B]/40 focus:outline-none transition-all cursor-pointer"
+              onChange={(e) => setRole(e.target.value as UserRole)}
+              disabled={user.role === 'Superadmin' && !isSuperadmin}
+              className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs text-slate-900 dark:text-slate-100 focus:border-[#001A2B] focus:ring-1 focus:ring-[#001A2B]/40 focus:outline-none transition-all cursor-pointer disabled:opacity-60"
             >
+              {user.role === 'Superadmin' && <option value="Superadmin">Superadmin (Root Administrator)</option>}
               <option value="User">User (Standard Staff)</option>
               <option value="Admin">Admin (Manager)</option>
             </select>
@@ -169,7 +176,8 @@ export function EditUserModal({
             </label>
             <input
               type="password"
-              placeholder="Leave blank to preserve current password"
+              minLength={8}
+              placeholder="Leave blank to preserve current password (min 8 chars)"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
               className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs text-slate-900 dark:text-slate-100 focus:border-[#001A2B] focus:ring-1 focus:ring-[#001A2B]/40 focus:outline-none transition-all"

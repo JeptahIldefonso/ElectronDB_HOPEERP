@@ -157,8 +157,9 @@ Separated in `auth.db` to protect `hope.db`'s 10-table canonical schema:
 * **Login Form (Figure 4):**
   - Inputs: Email address, Password, "Remember me" checkbox, "Forgot password?" link.
 
-* **Forgot Password Screen (`/forgot-password`, Figure 5):**
-  - Email input, "Send Reset Link" button, confirmation state.
+* **Superadmin Password Recovery (`/reset-password`, Figure 5):**
+  - Requires the Superadmin email and the server-configured recovery key (`ADMIN_RECOVERY_KEY`, or `AUTH_SECRET` as a fallback).
+  - Staff password resets are handled by administrators in User Management.
 
 ---
 

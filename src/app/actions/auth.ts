@@ -19,6 +19,7 @@ import {
   updateUserRights,
   adminCreateUser,
   updateUserProfile,
+  resetUserPassword,
 } from '@/lib/auth-db';
 
 /**
@@ -364,7 +365,7 @@ export async function updateUserProfileAction(data: {
   firstName: string;
   lastName: string;
   email: string;
-  role?: 'User' | 'Admin';
+  role?: UserRole;
   newPassword?: string;
 }): Promise<{ success: boolean; error?: string }> {
   try {
@@ -379,8 +380,8 @@ export async function updateUserProfileAction(data: {
 
     let passwordHash: string | undefined;
     if (data.newPassword && data.newPassword.trim()) {
-      if (data.newPassword.trim().length < 4) {
-        return { success: false, error: 'New password must be at least 4 characters.' };
+      if (data.newPassword.trim().length < 8) {
+        return { success: false, error: 'New password must be at least 8 characters.' };
       }
       passwordHash = await hashPassword(data.newPassword.trim());
     }
@@ -402,4 +403,74 @@ export async function updateUserProfileAction(data: {
   } catch (err: any) {
     return { success: false, error: err?.message || 'Failed to update user profile.' };
   }
+}
+
+/**
+ * Resets the Superadmin password after verifying the server-side recovery secret.
+ */
+export async function resetSuperadminPasswordAction(formData: FormData): Promise<{ success: boolean; error?: string }> {
+  const email = String(formData.get('email') ?? '').trim().toLowerCase();
+  const recoveryKey = String(formData.get('recoveryKey') ?? '');
+  const newPassword = String(formData.get('newPassword') ?? '');
+  const confirmPassword = String(formData.get('confirmPassword') ?? '');
+
+  if (!email || !recoveryKey || !newPassword || !confirmPassword) {
+    return { success: false, error: 'All fields are required.' };
+  }
+
+  if (newPassword.length < 8) {
+    return { success: false, error: 'New password must be at least 8 characters.' };
+  }
+
+  if (newPassword !== confirmPassword) {
+    return { success: false, error: 'Passwords do not match.' };
+  }
+
+  const configuredRecoveryKey = process.env.ADMIN_RECOVERY_KEY || process.env.AUTH_SECRET;
+  if (!configuredRecoveryKey?.trim()) {
+    return { success: false, error: 'Password recovery is not configured. Contact your system administrator.' };
+  }
+
+  const providedDigest = crypto.createHash('sha256').update(recoveryKey).digest();
+  const expectedDigest = crypto.createHash('sha256').update(configuredRecoveryKey.trim()).digest();
+  if (!crypto.timingSafeEqual(providedDigest, expectedDigest)) {
+    return { success: false, error: 'Invalid recovery key or server secret.' };
+  }
+
+  await ensureAuthDb();
+  const account = await findAccountByEmail(email);
+  if (!account || account.role !== 'Superadmin') {
+    return {
+      success: false,
+      error: 'Emergency reset is reserved for Superadmin accounts. Staff accounts are managed in User Management.',
+    };
+  }
+  if (account.isBlocked || account.status !== 'Active') {
+    return { success: false, error: 'This Superadmin account is inactive or blocked.' };
+  }
+
+  const passwordHash = await hashPassword(newPassword);
+  const result = await resetUserPassword(email, passwordHash);
+
+  if (!result.success || !result.user) {
+    return { success: false, error: result.error || 'Failed to update password.' };
+  }
+
+  // Establish authenticated session immediately
+  const sessionToken = signSession({
+    userId: result.user.userId,
+    email: result.user.email,
+    exp: Date.now() + SESSION_MAX_AGE * 1000,
+  });
+
+  const cookieStore = await cookies();
+  cookieStore.set(SESSION_COOKIE_NAME, sessionToken, {
+    path: '/',
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: SESSION_MAX_AGE,
+    sameSite: 'lax',
+  });
+
+  redirect('/');
 }
