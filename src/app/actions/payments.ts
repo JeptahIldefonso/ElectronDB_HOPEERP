@@ -81,7 +81,7 @@ export async function recordPaymentAction(input: RecordPaymentInput) {
         return { error: 'Payment date cannot be in the future.' };
       }
 
-      const latestPay = await db.get<any>('SELECT MAX(payDate) AS maxDate FROM PAYMENT WHERE transNo = ?', [sale.transNo]);
+      const latestPay = await db.get<any>('SELECT MAX(payDate) AS maxDate FROM PAYMENT WHERE transNo = ? AND (is_deleted = 0 OR is_deleted IS NULL)', [sale.transNo]);
       if (latestPay?.maxDate && validated.payDate < latestPay.maxDate) {
         await db.exec('ROLLBACK');
         return { error: `Payment date cannot be before the latest receipt date (${latestPay.maxDate}).` };
@@ -96,15 +96,15 @@ export async function recordPaymentAction(input: RecordPaymentInput) {
         JOIN PRICEHIST ph ON ph.prodCode = sd.prodCode AND ph.effDate = (
           SELECT MAX(ph2.effDate)
           FROM PRICEHIST ph2
-          WHERE ph2.prodCode = sd.prodCode AND ph2.effDate <= ?
+          WHERE ph2.prodCode = sd.prodCode AND ph2.effDate <= ? AND (ph2.is_deleted = 0 OR ph2.is_deleted IS NULL)
         )
-        WHERE sd.transNo = ?
+        WHERE sd.transNo = ? AND (sd.is_deleted = 0 OR sd.is_deleted IS NULL) AND (ph.is_deleted = 0 OR ph.is_deleted IS NULL)
       `, [sale.salesDate, sale.transNo]);
 
       const saleTotal = details.reduce((sum, d) => sum + (Number(d.quantity) * Number(d.unitPrice)), 0);
 
       // 4. Compute existing payments on this sale
-      const paySumRow = await db.get<any>('SELECT COALESCE(SUM(amount), 0) AS totalPaid FROM PAYMENT WHERE transNo = ?', [sale.transNo]);
+      const paySumRow = await db.get<any>('SELECT COALESCE(SUM(amount), 0) AS totalPaid FROM PAYMENT WHERE transNo = ? AND (is_deleted = 0 OR is_deleted IS NULL)', [sale.transNo]);
       const existingPayments = Number(paySumRow?.totalPaid || 0);
 
       // 5. Check if total payments would exceed sale total

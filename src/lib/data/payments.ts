@@ -92,7 +92,7 @@ export async function getPaymentsLedger(filter?: {
         SELECT SUM(sd.quantity * ph.unitPrice)
         FROM SALESDETAIL sd
         JOIN PRICEHIST ph ON ph.prodCode = sd.prodCode AND ph.effDate = (
-          SELECT MAX(effDate) FROM PRICEHIST WHERE prodCode = sd.prodCode AND effDate <= s.salesDate
+          SELECT MAX(effDate) FROM PRICEHIST WHERE prodCode = sd.prodCode AND effDate <= s.salesDate AND (is_deleted = 0 OR is_deleted IS NULL)
         )
         WHERE sd.transNo = s.transNo AND (sd.is_deleted = 0 OR sd.is_deleted IS NULL)
       ), 0.0) AS saleTotal,
@@ -282,14 +282,14 @@ export async function getOfficialReceipt(orNo: string | number): Promise<Officia
       c.payTerms,
       e.empNo,
       (e.firstName || ' ' || e.lastName) AS empName,
-      d.deptName
+      COALESCE(d.deptName, 'Sales') AS deptName
     FROM SALES s
     JOIN CUSTOMER c ON c.custNo = s.custNo
     JOIN EMPLOYEE e ON e.empNo = s.empNo
-    JOIN JOBHISTORY jh ON jh.empNo = e.empNo AND jh.effDate = (
+    LEFT JOIN JOBHISTORY jh ON jh.empNo = e.empNo AND jh.effDate = (
       SELECT MAX(effDate) FROM JOBHISTORY WHERE empNo = e.empNo AND effDate <= s.salesDate
     )
-    JOIN DEPARTMENT d ON d.deptCode = jh.deptCode
+    LEFT JOIN DEPARTMENT d ON d.deptCode = jh.deptCode
     WHERE s.transNo = ?
   `, [payment.transNo]);
 

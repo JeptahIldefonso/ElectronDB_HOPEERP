@@ -146,7 +146,7 @@ export async function getCustomersPageData(): Promise<{
 
         const termCounts: Record<string, number> = { ALL: customers.length, COD: 0, '30D': 0, '45D': 0 };
         for (const c of customers) {
-          const t = c.payterm;
+          const t = c.payterm || 'COD';
           termCounts[t] = (termCounts[t] || 0) + 1;
         }
 

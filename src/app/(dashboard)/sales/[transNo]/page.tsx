@@ -44,7 +44,12 @@ export default async function SaleDetailPage({ params }: PageProps) {
   }
 
   const { sale, items, payments } = saleData;
-  const canRecordPayment = user?.role === 'admin' || user?.role === 'cashier';
+  const role = (user?.role || '').toLowerCase();
+  const canRecordPayment =
+    role === 'superadmin' ||
+    role === 'admin' ||
+    role === 'cashier' ||
+    Boolean(user?.rights?.some((r) => r.includes('sale') || r.includes('payment')));
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 pt-2 sm:pt-4">
