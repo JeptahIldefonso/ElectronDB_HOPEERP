@@ -155,10 +155,8 @@ Separated in `auth.db` to protect `hope.db`'s 10-table canonical schema:
   - Notice box: *"New accounts are created as User. Superadmin and Admin roles can only be assigned by existing administrators."*
   - Automatically assigns role `User`.
 * **Login Form (Figure 4):**
-  - Inputs: Email address, Password, "Reset password" link.
-
-* **Password Recovery (`/reset-password`, Figure 5):**
-  - Enter registered email to verify account, then proceed to set new password directly.
+  - Inputs: Email address, Password.
+  - Accounts and credentials are created and managed by administrators in User Management.
 
 ---
 

@@ -97,14 +97,8 @@ This slice plan maps all 32 Developer tasks from `pr_manifest.csv` to the exact 
 
 ---
 
-### 4. `[S1-DEV-04]` Reset password: request, emailed token, reset form
-- **Task ID:** `S1-DEV-04`
-- **Branch:** `s1-dev-04-reset-password`
-- **PR Title:** `[S1-DEV-04] Reset password: request, emailed token, reset form`
-- **Dependencies:** `S1-DEV-03`
-- **Files & Slices:**
-  - `src/app/forgot-password/page.tsx`: Self-service password recovery flow with token verification and new password confirmation.
-- **Code Match Status:** Present and complete in `SNAPSHOT`.
+### 4. `[S1-DEV-04]` Authentication Security & Access Management
+- **Status:** Password reset flow removed per requirements; user accounts and credentials are administered via User Management screen.
 
 ---
 

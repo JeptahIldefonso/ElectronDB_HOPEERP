@@ -22,11 +22,6 @@ const nextConfig: NextConfig = {
         destination: '/',
         permanent: false,
       },
-      {
-        source: '/forgot-password',
-        destination: '/reset-password',
-        permanent: false,
-      },
     ];
   },
 };
