@@ -29,40 +29,31 @@ let initPromise: Promise<string> | null = null;
 
 /**
  * Resolves the canonical hope.db path synchronously.
- * On Vercel, ensures the directory exists and copies the bundled read-only hope.db
- * into /tmp/hope.db if not already present.
+ * Checks the bundled project root directory first, then fallback paths.
  */
 export function getHopeDbPath(): string {
-  if (process.env.VERCEL) {
-    const tmpPath = path.join('/tmp', 'hope.db');
-    if (!fs.existsSync(tmpPath)) {
-      const srcPath = path.join(process.cwd(), 'hope.db');
-      if (fs.existsSync(srcPath)) {
-        try {
-          fs.mkdirSync(path.dirname(tmpPath), { recursive: true });
-          fs.copyFileSync(srcPath, tmpPath);
-        } catch (err) {
-          console.error('[hope-db] Failed to copy hope.db to /tmp:', err);
-          throw Object.assign(new Error('Failed to copy database to /tmp'), { code: 'open_failed' });
-        }
-      } else {
-        console.error('[hope-db] Bundled hope.db not found at process.cwd():', srcPath);
-        throw Object.assign(new Error('Bundled database file is missing'), { code: 'file_missing' });
+  const candidatePaths = [
+    path.join(process.cwd(), 'hope.db'),
+    path.resolve('hope.db'),
+    path.join('/tmp', 'hope.db'),
+  ];
+
+  for (const candidate of candidatePaths) {
+    try {
+      if (fs.existsSync(candidate)) {
+        return candidate;
       }
+    } catch {
+      // ignore path access error and try next
     }
-    return tmpPath;
   }
 
-  const localPath = path.join(process.cwd(), 'hope.db');
-  if (!fs.existsSync(localPath)) {
-    console.error('[hope-db] Local hope.db not found at:', localPath);
-    throw Object.assign(new Error('Local database file is missing'), { code: 'file_missing' });
-  }
-  return localPath;
+  console.error('[hope-db] Bundled hope.db not found at any candidate path:', candidatePaths);
+  throw Object.assign(new Error('Bundled database file is missing'), { code: 'file_missing' });
 }
 
 /**
- * Asynchronous initialization ensuring cold-start copy completes once per instance.
+ * Asynchronous initialization ensuring cold-start check completes once per instance.
  */
 export async function ensureHopeDb(): Promise<string> {
   if (initPromise) return initPromise;
@@ -75,12 +66,13 @@ export async function ensureHopeDb(): Promise<string> {
 }
 
 /**
- * Opens a SQLite connection to hope.db using the canonical path.
+ * Opens a read-only SQLite connection to hope.db using the canonical path.
+ * Read-only ensures zero mutations and safe execution on Vercel's read-only serverless filesystem.
  */
 export function getHopeDb(): DatabaseSync {
   const dbPath = getHopeDbPath();
   try {
-    return new DatabaseSync(dbPath);
+    return new DatabaseSync(dbPath, { readOnly: true });
   } catch (err) {
     console.error('[hope-db] Failed to instantiate DatabaseSync:', err);
     throw Object.assign(new Error('Could not open SQLite database connection'), { code: 'open_failed' });

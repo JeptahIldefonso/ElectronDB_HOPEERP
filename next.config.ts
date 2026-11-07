@@ -3,8 +3,8 @@ import type { NextConfig } from 'next';
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   outputFileTracingIncludes: {
-    '/api/**/*': ['./hope.db', './auth.db'],
-    '/**/*': ['./hope.db', './auth.db'],
+    '/api/**/*': ['./hope.db'],
+    '/**/*': ['./hope.db'],
   },
   experimental: {
     cpus: 1,
