@@ -127,7 +127,7 @@ export type SeparateEmployeeInput = {
  */
 export async function addEmployeeAction(input: AddEmployeeInput) {
   try {
-    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only demo mode to protect canonical data. Writes are available in local development." };
+    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only mode to protect canonical data. Writes are available in local development." };
 
     const userName = await ensurePermission('add_employee');
     const validated = addEmployeeSchema.parse(input);
@@ -231,7 +231,7 @@ export async function addEmployeeAction(input: AddEmployeeInput) {
  */
 export async function updateEmployeeAction(input: UpdateEmployeeInput) {
   try {
-    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only demo mode to protect canonical data. Writes are available in local development." };
+    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only mode to protect canonical data. Writes are available in local development." };
 
     const userName = await ensurePermission('edit_employee');
     const validated = updateEmployeeSchema.parse(input);
@@ -318,7 +318,7 @@ export async function updateEmployeeAction(input: UpdateEmployeeInput) {
  */
 export async function deleteEmployeeAction(empNo: string) {
   try {
-    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only demo mode to protect canonical data. Writes are available in local development." };
+    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only mode to protect canonical data. Writes are available in local development." };
 
     const userName = await ensurePermission('delete_employee');
     const cleanEmpNo = String(empNo).trim().padStart(5, '0');
@@ -348,7 +348,7 @@ export async function deleteEmployeeAction(empNo: string) {
  */
 export async function restoreEmployeeAction(empNo: string) {
   try {
-    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only demo mode to protect canonical data. Writes are available in local development." };
+    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only mode to protect canonical data. Writes are available in local development." };
 
     const userName = await ensureAdmin();
     const cleanEmpNo = String(empNo).trim().padStart(5, '0');
@@ -382,7 +382,7 @@ export async function restoreEmployeeAction(empNo: string) {
  */
 export async function addJobAction(jobCode: string, jobDesc: string) {
   try {
-    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only demo mode to protect canonical data. Writes are available in local development." };
+    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only mode to protect canonical data. Writes are available in local development." };
 
     const userName = await ensurePermission('add_job');
     const validated = jobSchema.parse({ jobCode, jobDesc });
@@ -423,7 +423,7 @@ export async function addJobAction(jobCode: string, jobDesc: string) {
  */
 export async function updateJobAction(jobCode: string, jobDesc: string) {
   try {
-    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only demo mode to protect canonical data. Writes are available in local development." };
+    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only mode to protect canonical data. Writes are available in local development." };
 
     const userName = await ensurePermission('edit_job');
     const code = String(jobCode).trim().toUpperCase();
@@ -453,7 +453,7 @@ export async function updateJobAction(jobCode: string, jobDesc: string) {
  */
 export async function deleteJobAction(jobCode: string) {
   try {
-    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only demo mode to protect canonical data. Writes are available in local development." };
+    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only mode to protect canonical data. Writes are available in local development." };
 
     const userName = await ensurePermission('delete_job');
     const code = String(jobCode).trim().toUpperCase();
@@ -479,7 +479,7 @@ export async function deleteJobAction(jobCode: string) {
  */
 export async function restoreJobAction(jobCode: string) {
   try {
-    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only demo mode to protect canonical data. Writes are available in local development." };
+    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only mode to protect canonical data. Writes are available in local development." };
 
     const userName = await ensureAdmin();
     const code = String(jobCode).trim().toUpperCase();
@@ -509,7 +509,7 @@ export async function restoreJobAction(jobCode: string) {
  */
 export async function addDepartmentAction(deptCode: string, deptName: string) {
   try {
-    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only demo mode to protect canonical data. Writes are available in local development." };
+    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only mode to protect canonical data. Writes are available in local development." };
 
     const userName = await ensurePermission('add_department');
     const validated = departmentSchema.parse({ deptCode, deptName });
@@ -549,7 +549,7 @@ export async function addDepartmentAction(deptCode: string, deptName: string) {
  */
 export async function updateDepartmentAction(deptCode: string, deptName: string) {
   try {
-    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only demo mode to protect canonical data. Writes are available in local development." };
+    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only mode to protect canonical data. Writes are available in local development." };
 
     const userName = await ensurePermission('edit_department');
     const code = String(deptCode).trim().toUpperCase();
@@ -579,7 +579,7 @@ export async function updateDepartmentAction(deptCode: string, deptName: string)
  */
 export async function deleteDepartmentAction(deptCode: string) {
   try {
-    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only demo mode to protect canonical data. Writes are available in local development." };
+    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only mode to protect canonical data. Writes are available in local development." };
 
     const userName = await ensurePermission('delete_department');
     const code = String(deptCode).trim().toUpperCase();
@@ -605,7 +605,7 @@ export async function deleteDepartmentAction(deptCode: string) {
  */
 export async function restoreDepartmentAction(deptCode: string) {
   try {
-    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only demo mode to protect canonical data. Writes are available in local development." };
+    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only mode to protect canonical data. Writes are available in local development." };
 
     const userName = await ensureAdmin();
     const code = String(deptCode).trim().toUpperCase();
@@ -635,7 +635,7 @@ export async function restoreDepartmentAction(deptCode: string) {
  */
 export async function addJobHistoryAction(input: JobHistoryInput) {
   try {
-    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only demo mode to protect canonical data. Writes are available in local development." };
+    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only mode to protect canonical data. Writes are available in local development." };
 
     const userName = await ensurePermission('add_job_history');
     const validated = jobHistorySchema.parse(input);
@@ -761,7 +761,7 @@ export async function updateJobHistoryAction(input: {
  */
 export async function deleteJobHistoryAction(empNo: string, jobCode: string, effDate: string) {
   try {
-    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only demo mode to protect canonical data. Writes are available in local development." };
+    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only mode to protect canonical data. Writes are available in local development." };
 
     const userName = await ensurePermission('delete_job_history');
     const cleanEmpNo = String(empNo).trim().padStart(5, '0');
@@ -797,7 +797,7 @@ export async function deleteJobHistoryAction(empNo: string, jobCode: string, eff
  */
 export async function restoreJobHistoryAction(empNo: string, jobCode: string, effDate: string) {
   try {
-    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only demo mode to protect canonical data. Writes are available in local development." };
+    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only mode to protect canonical data. Writes are available in local development." };
 
     const userName = await ensureAdmin();
     const cleanEmpNo = String(empNo).trim().padStart(5, '0');

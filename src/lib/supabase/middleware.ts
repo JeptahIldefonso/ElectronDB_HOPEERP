@@ -7,8 +7,8 @@ export async function updateSession(request: NextRequest) {
   });
 
   const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://demo.supabase.co',
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'demo-anon-key',
+    process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co',
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key',
     {
       cookies: {
         getAll() {
@@ -51,6 +51,5 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Note: For demo accounts, demo mode is enabled in Task 3 actions
-  return supabaseResponse;
+    return supabaseResponse;
 }

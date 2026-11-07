@@ -247,7 +247,7 @@ export function sanitizeDbError(err: any, fallbackMessage = 'Unable to complete 
 
   // Read-only environment guard (Vercel without Turso or locked DB)
   if (raw.includes('readonly') || raw.includes('READONLY') || raw.includes('read-only')) {
-    return 'This deployed environment is in read-only demo mode to protect canonical data. Writes are available in local development or with Turso configured.';
+    return 'This deployed environment is in read-only mode to protect canonical data. Writes are available in local development or with Turso configured.';
   }
 
   // Foreign key constraint failure

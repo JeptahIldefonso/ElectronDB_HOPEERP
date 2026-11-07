@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
-import { isDemoReadOnly } from '@/lib/is-readonly';
+import { isReadOnly } from '@/lib/is-readonly';
 import { addProductAction } from '@/app/actions/products';
 import { X, PackagePlus, AlertCircle } from 'lucide-react';
 
@@ -250,7 +250,7 @@ export function AddProductModal({
               disabled={isSubmitting}
               className="bg-[#001A2B] hover:bg-[#00263E] text-white transition-colors"
             >
-              {isSubmitting ? 'Saving...' : isDemoReadOnly() ? 'Add Product (Read-Only Demo)' : 'Add Product'}
+              {isSubmitting ? 'Saving...' : isReadOnly() ? 'Add Product (Read-Only)' : 'Add Product'}
             </Button>
           </div>
         </form>

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { X, AlertCircle, Loader2 } from 'lucide-react';
 import { createSaleHeaderAction } from '@/app/actions/sales';
 import type { SalesLookupData } from '@/lib/data/sales';
-import { isDemoReadOnly } from '@/lib/is-readonly';
+import { isReadOnly } from '@/lib/is-readonly';
 
 interface NewSaleModalProps {
   isOpen: boolean;
@@ -183,7 +183,7 @@ export function NewSaleModal({
               className="px-4 py-1.5 text-xs font-medium rounded-md bg-[#001A2B] hover:bg-[#00263E] text-white shadow-sm flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-colors"
             >
               {isSubmitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-              <span>{isDemoReadOnly() ? 'Save Sale (Read-Only Demo)' : 'Save Sale'}</span>
+              <span>{isReadOnly() ? 'Save Sale (Read-Only)' : 'Save Sale'}</span>
             </button>
           </div>
         </form>

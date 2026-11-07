@@ -90,7 +90,7 @@ export type RecordPaymentInput = {
 export async function addCustomerAction(input: AddCustomerInput) {
   try {
     if (isDatabaseReadOnly()) {
-      return { error: 'This deployed environment is in read-only demo mode to protect canonical data. Writes are available in local development or with Turso configured.' };
+      return { error: 'This deployed environment is in read-only mode to protect canonical data. Writes are available in local development or with Turso configured.' };
     }
 
     const auth = await checkUserPermission('add_customer');
@@ -153,7 +153,7 @@ export async function addCustomerAction(input: AddCustomerInput) {
 export async function updateCustomerAction(input: UpdateCustomerInput) {
   try {
     if (isDatabaseReadOnly()) {
-      return { error: 'This deployed environment is in read-only demo mode to protect canonical data. Writes are available in local development or with Turso configured.' };
+      return { error: 'This deployed environment is in read-only mode to protect canonical data. Writes are available in local development or with Turso configured.' };
     }
 
     const auth = await checkUserPermission('edit_customer');
@@ -217,7 +217,7 @@ export async function updateCustomerAction(input: UpdateCustomerInput) {
 export async function deleteCustomerAction(custNo: string) {
   try {
     if (isDatabaseReadOnly()) {
-      return { error: 'This deployed environment is in read-only demo mode to protect canonical data. Writes are available in local development or with Turso configured.' };
+      return { error: 'This deployed environment is in read-only mode to protect canonical data. Writes are available in local development or with Turso configured.' };
     }
 
     const auth = await checkUserPermission('delete_customer');
@@ -271,7 +271,7 @@ export async function deleteCustomerAction(custNo: string) {
 export async function restoreCustomerAction(custNo: string) {
   try {
     if (isDatabaseReadOnly()) {
-      return { error: 'This deployed environment is in read-only demo mode to protect canonical data. Writes are available in local development or with Turso configured.' };
+      return { error: 'This deployed environment is in read-only mode to protect canonical data. Writes are available in local development or with Turso configured.' };
     }
 
     const user = await getCurrentUser();
@@ -325,7 +325,7 @@ export async function restoreCustomerAction(custNo: string) {
 export async function recordCustomerPaymentAction(input: RecordPaymentInput) {
   try {
     if (isDatabaseReadOnly()) {
-      return { error: 'This deployed environment is in read-only demo mode to protect canonical data. Writes are available in local development or with Turso configured.' };
+      return { error: 'This deployed environment is in read-only mode to protect canonical data. Writes are available in local development or with Turso configured.' };
     }
 
     const user = await getCurrentUser();

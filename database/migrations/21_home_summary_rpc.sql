@@ -39,7 +39,7 @@ BEGIN
 
     -- Enforce authorized roles (admin, sales, cashier)
     IF v_role NOT IN ('admin', 'sales', 'cashier') THEN
-        -- Allow authenticated callers in standard local/demo Supabase instances
+        -- Allow authenticated callers in standard local/development Supabase instances
         IF auth.role() != 'authenticated' AND v_role != 'authenticated' THEN
             RAISE EXCEPTION 'Access denied: Insufficient permissions to view database summary.'
                 USING ERRCODE = '42501';

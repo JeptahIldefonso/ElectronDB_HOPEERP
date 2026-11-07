@@ -156,11 +156,7 @@ Separated in `auth.db` to protect `hope.db`'s 10-table canonical schema:
   - Automatically assigns role `User`.
 * **Login Form (Figure 4):**
   - Inputs: Email address, Password, "Remember me" checkbox, "Forgot password?" link.
-  - Demo accounts helper box for evaluation:
-    - `superadmin@hope.com` (Superadmin)
-    - `admin@hope.com` (Admin)
-    - `user@hope.com` (User)
-  - Google authentication action (demo simulation).
+
 * **Forgot Password Screen (`/forgot-password`, Figure 5):**
   - Email input, "Send Reset Link" button, confirmation state.
 

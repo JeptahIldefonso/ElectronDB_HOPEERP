@@ -5,7 +5,7 @@ import { X, Loader2, DollarSign, Calendar, FileText } from 'lucide-react';
 import { recordPaymentAction } from '@/app/actions/payments';
 import type { SaleForPaymentOption } from '@/lib/data/payments';
 import { formatPHP } from '@/lib/utils';
-import { isDemoReadOnly } from '@/lib/is-readonly';
+import { isReadOnly } from '@/lib/is-readonly';
 
 interface RecordPaymentModalProps {
   isOpen: boolean;
@@ -233,7 +233,7 @@ export function RecordPaymentModal({
               className="px-5 py-2 text-xs font-medium rounded-md bg-[#001A2B] hover:bg-[#00263E] text-white shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-colors"
             >
               {isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-              <span>{isDemoReadOnly() ? 'Record Payment (Read-Only Demo)' : 'Record Payment & Issue OR'}</span>
+              <span>{isReadOnly() ? 'Record Payment (Read-Only)' : 'Record Payment & Issue OR'}</span>
             </button>
           </div>
         </form>

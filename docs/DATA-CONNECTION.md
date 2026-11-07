@@ -12,7 +12,7 @@ To balance **local zero-setup offline speed** with **persistent cloud writes on 
 | :--- | :--- | :--- | :--- | :--- |
 | **Local Development** | Native SQLite (`@libsql/client` `file:` adapter) | `hope.work.db` (working copy in repo root) | **Yes** (persists in `hope.work.db`) | Master `hope.db` is pristine (928 rows). Working copy can be reset anytime via `npm run db:reset`. |
 | **Production (Configured)** | Turso Cloud libSQL (`@libsql/client` remote) | `TURSO_DATABASE_URL` (libsql cloud cluster) | **Yes** (persists across all Vercel cold starts) | Multi-replica distributed SQLite with full ACID transactions. |
-| **Production (Fallback)** | Native SQLite (Bundled read-only) | Bundled `hope.db` | **No** (Safe Read-Only Demo) | If `TURSO_DATABASE_URL` is omitted, write actions display friendly demo badges instead of throwing raw database errors. |
+| **Production (Fallback)** | Native SQLite (Bundled read-only) | Bundled `hope.db` | **No** (Safe Read-Only Mode) | If `TURSO_DATABASE_URL` is omitted, write actions display friendly read-only notices instead of throwing raw database errors. |
 
 ---
 
@@ -145,11 +145,11 @@ npm run db:reset:turso -- --confirm=RESET_PRODUCTION_TURSO
 
 ---
 
-## 6. Demo Safety & Production Access Control
+## 6. Production Access Control & Read-Only Safety
 
 To protect database integrity on the public deployment:
 1. **One-Click Superadmin Access Disabled on Vercel:**
-   The one-click demo login buttons in production allow login as limited roles (**User / Staff**). Attempting one-click Superadmin sign in on the live site is rejected with an explanatory security notice.
+   In production, write actions are restricted to preserving canonical database integrity. User roles and permissions are enforced strictly via the authenticated session.
 2. **Superadmin Login Requires Credentials:**
    Full administrator privileges require typing the genuine account credentials in the sign-in form.
 3. **Friendly Error Sanitization:**

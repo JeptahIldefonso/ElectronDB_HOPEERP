@@ -87,7 +87,7 @@ const lineItemSchema = z.object({
 // ========================================================================
 export async function createSaleHeaderAction(input: z.infer<typeof createSaleHeaderSchema>) {
   try {
-    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only demo mode to protect canonical data. Writes are available in local development." };
+    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only mode to protect canonical data. Writes are available in local development." };
     const userName = await ensurePermission('add_sale');
     const validated = createSaleHeaderSchema.parse(input);
 
@@ -137,7 +137,7 @@ export async function createSaleHeaderAction(input: z.infer<typeof createSaleHea
 // ========================================================================
 export async function updateSaleHeaderAction(input: z.infer<typeof updateSaleHeaderSchema>) {
   try {
-    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only demo mode to protect canonical data. Writes are available in local development." };
+    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only mode to protect canonical data. Writes are available in local development." };
     const userName = await ensurePermission('edit_sale');
     const validated = updateSaleHeaderSchema.parse(input);
     const stampStr = getStampString('EDITED', userName);
@@ -182,7 +182,7 @@ export async function updateSaleHeaderAction(input: z.infer<typeof updateSaleHea
 // ========================================================================
 export async function deleteSaleAction(transNo: string) {
   try {
-    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only demo mode to protect canonical data. Writes are available in local development." };
+    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only mode to protect canonical data. Writes are available in local development." };
     const userName = await ensurePermission('delete_sale');
     const cleanTrans = String(transNo).trim();
     const stampStr = getStampString('DELETED', userName);
@@ -206,7 +206,7 @@ export async function deleteSaleAction(transNo: string) {
 // ========================================================================
 export async function restoreSaleAction(transNo: string) {
   try {
-    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only demo mode to protect canonical data. Writes are available in local development." };
+    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only mode to protect canonical data. Writes are available in local development." };
     const user = await getCurrentUser();
     const role = (user?.role || '').toLowerCase();
     if (role !== 'admin' && role !== 'superadmin') {
@@ -236,7 +236,7 @@ export async function restoreSaleAction(transNo: string) {
 
 export async function addLineItemAction(input: z.infer<typeof lineItemSchema>) {
   try {
-    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only demo mode to protect canonical data. Writes are available in local development." };
+    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only mode to protect canonical data. Writes are available in local development." };
     const userName = await ensurePermission('add_sale_detail');
     const validated = lineItemSchema.parse(input);
     const cleanTrans = validated.transNo.trim();
@@ -288,7 +288,7 @@ export async function addLineItemAction(input: z.infer<typeof lineItemSchema>) {
 
 export async function updateLineItemAction(input: z.infer<typeof lineItemSchema>) {
   try {
-    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only demo mode to protect canonical data. Writes are available in local development." };
+    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only mode to protect canonical data. Writes are available in local development." };
     const userName = await ensurePermission('edit_sale_detail');
     const validated = lineItemSchema.parse(input);
     const cleanTrans = validated.transNo.trim();
@@ -316,7 +316,7 @@ export async function updateLineItemAction(input: z.infer<typeof lineItemSchema>
 
 export async function deleteLineItemAction(transNo: string, prodCode: string) {
   try {
-    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only demo mode to protect canonical data. Writes are available in local development." };
+    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only mode to protect canonical data. Writes are available in local development." };
     const userName = await ensurePermission('delete_sale_detail');
     const cleanTrans = String(transNo).trim();
     const cleanProd = String(prodCode).trim().toUpperCase();
@@ -338,7 +338,7 @@ export async function deleteLineItemAction(transNo: string, prodCode: string) {
 
 export async function restoreLineItemAction(transNo: string, prodCode: string) {
   try {
-    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only demo mode to protect canonical data. Writes are available in local development." };
+    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only mode to protect canonical data. Writes are available in local development." };
     const user = await getCurrentUser();
     const role = (user?.role || '').toLowerCase();
     if (role !== 'admin' && role !== 'superadmin') {
@@ -395,7 +395,7 @@ export type CreateSaleInput = {
  */
 export async function createSaleAction(input: CreateSaleInput) {
   try {
-    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only demo mode to protect canonical data. Writes are available in local development." };
+    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only mode to protect canonical data. Writes are available in local development." };
     const userName = await ensurePermission('add_sale');
     const db = getSqliteDb();
 

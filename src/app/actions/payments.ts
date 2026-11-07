@@ -41,7 +41,7 @@ export async function getPaymentFormDataAction(filter?: { transNo?: string | num
 export async function recordPaymentAction(input: RecordPaymentInput) {
   try {
     if (isDatabaseReadOnly()) {
-      return { error: 'This deployed environment is in read-only demo mode to protect canonical data. Writes are available in local development or with Turso configured.' };
+      return { error: 'This deployed environment is in read-only mode to protect canonical data. Writes are available in local development or with Turso configured.' };
     }
 
     // 1. Validate input parameters with Zod
