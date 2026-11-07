@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useTransition } from 'react';
+import React, { useState, useTransition, useEffect } from 'react';
 import Link from 'next/link';
 import { Eye, EyeOff, Loader2, ArrowLeft } from 'lucide-react';
 import { loginAction, registerAction, demoLoginAction } from '@/app/actions/auth';
@@ -13,6 +13,34 @@ export default function LoginPage() {
   const [showRegPassword, setShowRegPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [isPending, startTransition] = useTransition();
+
+  // Keep browser tab title synchronized with active authentication mode
+  useEffect(() => {
+    document.title =
+      mode === 'signin'
+        ? 'Sign In | ElectronDB ERP'
+        : 'Register | ElectronDB ERP';
+  }, [mode]);
+
+  const handleTabKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      setMode('register');
+      setError(null);
+    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      setMode('signin');
+      setError(null);
+    } else if (e.key === 'Home') {
+      e.preventDefault();
+      setMode('signin');
+      setError(null);
+    } else if (e.key === 'End') {
+      e.preventDefault();
+      setMode('register');
+      setError(null);
+    }
+  };
 
   const handleLoginSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -48,55 +76,93 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="relative min-h-screen flex flex-col justify-between bg-[#F4F4F0] text-[#041a24] selection:bg-[#041a24] selection:text-white overflow-x-hidden font-sans">
+    <div className="relative min-h-screen flex flex-col justify-between bg-[#F4F4F0] text-[#041a24] selection:bg-[#041a24] selection:text-white overflow-x-hidden font-sans transition-colors duration-150">
       <TopographicCanvas />
 
-      {/* Brand Header */}
+      {/* Brand Header (High contrast against matte light topographic canvas) */}
       <header className="relative z-10 w-full max-w-5xl mx-auto px-6 pt-8 pb-4 flex items-center justify-between">
-        <Link href="/" className="flex items-center gap-2.5 text-xs font-medium text-[#41555f] hover:text-[#041a24] transition-colors">
+        <Link
+          href="/"
+          className="flex items-center gap-2 text-xs font-mono uppercase tracking-wider text-[#41555e] hover:text-[#041a25] transition-colors"
+        >
           <ArrowLeft className="w-3.5 h-3.5" />
           <span>Back to Landing</span>
         </Link>
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded bg-[#0284C7] flex items-center justify-center font-bold text-white text-sm shadow-xs">
-            H
+
+        {/* Artistic ElectronDB Brand Mark & Wordmark */}
+        <div className="flex items-center gap-2.5">
+          <svg
+            viewBox="0 0 32 32"
+            className="w-8 h-8 text-[#041a25] shrink-0"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+            aria-label="ElectronDB Monogram"
+            role="img"
+          >
+            {/* Orbit ring & single electron dot */}
+            <g transform="rotate(-28 16 16)">
+              <ellipse
+                cx="16"
+                cy="16"
+                rx="13"
+                ry="5.5"
+                stroke="currentColor"
+                strokeWidth="1.25"
+                strokeOpacity="0.75"
+              />
+              <circle cx="29" cy="16" r="1.75" fill="currentColor" />
+            </g>
+            {/* Clean geometric E */}
+            <path
+              d="M11 9.5 H21 V12 H13.5 V14.75 H19.5 V17.25 H13.5 V20 H21 V22.5 H11 Z"
+              fill="currentColor"
+            />
+          </svg>
+          <div className="flex flex-col leading-none">
+            <span className="font-editorial italic text-xl font-normal tracking-tight text-[#041a25]">
+              ElectronDB
+            </span>
+            <span className="font-mono text-[9px] tracking-[0.2em] uppercase text-[#41555e] mt-0.5">
+              ERP
+            </span>
           </div>
-          <span className="font-editorial text-lg font-normal text-[#041a24]">Hope, Inc. ERP</span>
         </div>
       </header>
 
       {/* Main Authentication Card */}
       <main className="relative z-10 flex-1 flex flex-col items-center justify-center px-4 py-6 w-full max-w-md mx-auto">
-        <div className="w-full bg-white border border-black/10 rounded-[6px] shadow-sm p-6 sm:p-8 space-y-5">
-          {/* Card Title (Fig 3 & 4) */}
+        <div className="w-full bg-white dark:bg-surface-1 border border-black/10 dark:border-border rounded-[6px] shadow-sm p-6 sm:p-8 space-y-5 transition-colors duration-150">
+          {/* Card Title & Rebranded Copy */}
           <div className="text-left">
-            <h1 className="font-editorial text-2xl font-normal text-[#041a24] tracking-tight leading-tight">
+            <h1 className="font-editorial text-2xl font-normal text-[#041a24] dark:text-text tracking-tight leading-tight">
               {mode === 'signin' ? 'Welcome back' : 'Create your account'}
             </h1>
-            <p className="text-xs text-[#41555f] mt-1 font-sans">
+            <p className="text-xs text-[#41555f] dark:text-text-muted mt-1 font-sans">
               {mode === 'signin'
-                ? 'Sign in to your Hope, Inc. ERP account'
-                : 'Join Hope, Inc. ERP'}
+                ? 'Sign in to your ElectronDB ERP account'
+                : 'Create your ElectronDB ERP account'}
             </p>
           </div>
 
-          {/* Role rule notice in Register mode (Fig 3) */}
+          {/* Role rule notice in Register mode */}
           {mode === 'register' && (
-            <div className="rounded-[4px] bg-[#FFFBEB] border border-[#FDE68A] p-2.5 text-[11px] text-[#92400E] leading-relaxed">
+            <div className="rounded-[4px] bg-[#FFFBEB] dark:bg-[#78350F]/20 border border-[#FDE68A] dark:border-[#92400E]/40 p-2.5 text-[11px] text-[#92400E] dark:text-[#FDE68A] leading-relaxed">
               New accounts are created as <strong>User</strong>. Superadmin and Admin roles can only be assigned by existing administrators.
             </div>
           )}
 
-          {/* Demo Accounts Notice in Login mode (Fig 4) */}
+          {/* Demo Accounts Notice in Login mode */}
           {mode === 'signin' && (
-            <div className="rounded-[4px] bg-[#041a24]/5 border border-[#041a24]/15 p-3 text-[11px] text-[#041a24] space-y-2">
-              <div className="font-semibold text-xs text-[#041a24]">Demo accounts (one-click sign in):</div>
+            <div className="rounded-[4px] bg-[#041a24]/5 dark:bg-surface-2 border border-[#041a24]/15 dark:border-border p-3 text-[11px] text-[#041a24] dark:text-text space-y-2">
+              <div className="font-mono text-[10.5px] uppercase tracking-[0.14em] font-semibold text-[#041a24] dark:text-text">
+                Demo accounts (one-click sign in):
+              </div>
               <div className="grid grid-cols-3 gap-1.5 pt-0.5">
                 <button
                   type="button"
                   onClick={() => handleQuickDemo('Superadmin')}
                   disabled={isPending}
-                  className="py-1 px-1.5 bg-white border border-[#041a24]/20 hover:bg-[#041a24]/5 text-[10px] font-semibold text-[#041a24] rounded text-center transition-colors shadow-2xs"
+                  className="py-1 px-1.5 bg-white dark:bg-surface-1 border border-[#041a24]/20 dark:border-border hover:bg-[#041a24]/5 dark:hover:bg-surface-3 text-[10px] font-mono uppercase tracking-wider font-semibold text-[#041a24] dark:text-text rounded text-center transition-colors shadow-2xs cursor-pointer"
                 >
                   Superadmin
                 </button>
@@ -104,7 +170,7 @@ export default function LoginPage() {
                   type="button"
                   onClick={() => handleQuickDemo('Admin')}
                   disabled={isPending}
-                  className="py-1 px-1.5 bg-white border border-[#041a24]/20 hover:bg-[#041a24]/5 text-[10px] font-semibold text-[#041a24] rounded text-center transition-colors shadow-2xs"
+                  className="py-1 px-1.5 bg-white dark:bg-surface-1 border border-[#041a24]/20 dark:border-border hover:bg-[#041a24]/5 dark:hover:bg-surface-3 text-[10px] font-mono uppercase tracking-wider font-semibold text-[#041a24] dark:text-text rounded text-center transition-colors shadow-2xs cursor-pointer"
                 >
                   Admin
                 </button>
@@ -112,7 +178,7 @@ export default function LoginPage() {
                   type="button"
                   onClick={() => handleQuickDemo('User')}
                   disabled={isPending}
-                  className="py-1 px-1.5 bg-white border border-[#041a24]/20 hover:bg-[#041a24]/5 text-[10px] font-semibold text-[#041a24] rounded text-center transition-colors shadow-2xs"
+                  className="py-1 px-1.5 bg-white dark:bg-surface-1 border border-[#041a24]/20 dark:border-border hover:bg-[#041a24]/5 dark:hover:bg-surface-3 text-[10px] font-mono uppercase tracking-wider font-semibold text-[#041a24] dark:text-text rounded text-center transition-colors shadow-2xs cursor-pointer"
                 >
                   User (Staff)
                 </button>
@@ -120,39 +186,60 @@ export default function LoginPage() {
             </div>
           )}
 
-          {/* Segmented Mode Switcher */}
+          {/* Artistic Segmented Mode Switcher with sliding navy thumb */}
           <div
             role="tablist"
-            className="grid grid-cols-2 p-1 rounded-[4px] bg-[#F4F4F0] border border-black/10 text-xs font-medium"
+            aria-label="Authentication mode"
+            tabIndex={0}
+            onKeyDown={handleTabKeyDown}
+            className="relative grid grid-cols-2 p-1 rounded-[4px] bg-[#F4F4F0] dark:bg-surface-2 border border-black/10 dark:border-border text-xs font-medium select-none focus:outline-none focus-visible:ring-1 focus-visible:ring-[#041a24]"
           >
+            {/* Sliding navy thumb */}
+            <div
+              aria-hidden="true"
+              className="absolute top-1 bottom-1 left-1 w-[calc(50%-4px)] rounded-[3px] bg-[#041a24] dark:bg-primary-bg shadow-xs pointer-events-none transition-transform duration-200 ease-out motion-reduce:transition-none"
+              style={{
+                transform: mode === 'signin' ? 'translateX(0%)' : 'translateX(100%)',
+              }}
+            />
+
+            {/* Sign In tab button */}
             <button
+              id="tab-signin"
               type="button"
               role="tab"
               aria-selected={mode === 'signin'}
+              aria-controls="panel-signin"
+              tabIndex={mode === 'signin' ? 0 : -1}
               onClick={() => {
                 setMode('signin');
                 setError(null);
               }}
-              className={`py-1.5 text-center transition-all rounded-[3px] font-medium cursor-pointer ${
+              className={`relative z-10 py-1.5 text-center font-mono text-[11px] uppercase tracking-[0.14em] font-semibold transition-colors duration-200 cursor-pointer ${
                 mode === 'signin'
-                  ? 'bg-white text-[#041a24] shadow-2xs font-semibold'
-                  : 'text-[#41555f] hover:text-[#041a24]'
+                  ? 'text-white dark:!text-primary-fg'
+                  : 'text-[#41555f] hover:text-[#041a24] dark:text-text-muted dark:hover:text-text'
               }`}
             >
               Sign In
             </button>
+
+            {/* Register tab button */}
             <button
+              id="tab-register"
               type="button"
               role="tab"
               aria-selected={mode === 'register'}
+              aria-controls="panel-register"
+              tabIndex={mode === 'register' ? 0 : -1}
               onClick={() => {
                 setMode('register');
                 setError(null);
               }}
-              className={`py-1.5 text-center transition-all rounded-[3px] font-medium cursor-pointer ${
+              className={`relative z-10 py-1.5 text-center font-mono text-[11px] uppercase tracking-[0.14em] font-semibold transition-colors duration-200 cursor-pointer ${
                 mode === 'register'
-                  ? 'bg-white text-[#041a24] shadow-2xs font-semibold'
-                  : 'text-[#41555f] hover:text-[#041a24]'
+                  ? 'text-white dark:!text-primary-fg'
+                  : 'text-[#41555f] hover:text-[#041a24] dark:text-text-muted dark:hover:text-text'
               }`}
             >
               Register
@@ -170,13 +257,13 @@ export default function LoginPage() {
             </div>
           )}
 
-          {/* Sign In Form (Fig 4) */}
+          {/* Sign In Form */}
           {mode === 'signin' && (
-            <form onSubmit={handleLoginSubmit} className="space-y-3.5">
+            <form id="panel-signin" role="tabpanel" aria-labelledby="tab-signin" onSubmit={handleLoginSubmit} className="space-y-3.5">
               <div>
                 <label
                   htmlFor="signin-email"
-                  className="block text-xs font-semibold text-[#041a24] mb-1 font-sans"
+                  className="block font-mono text-[11px] uppercase tracking-[0.14em] font-medium text-[#41555f] dark:text-text-muted mb-1.5"
                 >
                   Email address
                 </label>
@@ -187,21 +274,21 @@ export default function LoginPage() {
                   required
                   defaultValue="admin@hope.com"
                   placeholder="name@hope.com"
-                  className="w-full h-9 px-3 bg-white border border-black/15 focus:border-[#0284C7] focus:ring-1 focus:ring-[#0284C7]/20 rounded-[3px] text-xs text-[#041a24] placeholder-[#41555f]/60 outline-none transition-all font-sans"
+                  className="w-full h-9 px-3 bg-white dark:bg-surface-2 border border-black/15 dark:border-border focus:border-[#041a24] dark:focus:border-text focus:ring-1 focus:ring-[#041a24]/20 rounded-[3px] text-xs text-[#041a24] dark:text-text placeholder-[#41555f]/60 dark:placeholder-text-muted/60 outline-none transition-all font-sans"
                 />
               </div>
 
               <div>
-                <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center justify-between mb-1.5">
                   <label
                     htmlFor="signin-password"
-                    className="block text-xs font-semibold text-[#041a24] font-sans"
+                    className="block font-mono text-[11px] uppercase tracking-[0.14em] font-medium text-[#41555f] dark:text-text-muted"
                   >
                     Password
                   </label>
                   <Link
                     href="/forgot-password"
-                    className="text-[11px] text-[#0284C7] hover:underline"
+                    className="font-sans text-[11px] text-[#41555f] dark:text-text-muted hover:text-[#041a24] dark:hover:text-text underline underline-offset-2 transition-colors"
                   >
                     Forgot password?
                   </Link>
@@ -214,12 +301,13 @@ export default function LoginPage() {
                     required
                     defaultValue="demo"
                     placeholder="Enter your password"
-                    className="w-full h-9 pl-3 pr-9 bg-white border border-black/15 focus:border-[#0284C7] focus:ring-1 focus:ring-[#0284C7]/20 rounded-[3px] text-xs text-[#041a24] placeholder-[#41555f]/60 outline-none transition-all font-sans"
+                    className="w-full h-9 pl-3 pr-9 bg-white dark:bg-surface-2 border border-black/15 dark:border-border focus:border-[#041a24] dark:focus:border-text focus:ring-1 focus:ring-[#041a24]/20 rounded-[3px] text-xs text-[#041a24] dark:text-text placeholder-[#41555f]/60 dark:placeholder-text-muted/60 outline-none transition-all font-sans"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-black/40 hover:text-[#041a24] p-1 rounded transition-colors"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-black/40 dark:text-text-muted hover:text-[#041a24] dark:hover:text-text p-1 rounded transition-colors"
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
                   >
                     {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                   </button>
@@ -232,9 +320,9 @@ export default function LoginPage() {
                   type="checkbox"
                   checked={rememberMe}
                   onChange={(e) => setRememberMe(e.target.checked)}
-                  className="w-3.5 h-3.5 rounded border-black/20 text-[#0284C7] focus:ring-0 cursor-pointer"
+                  className="w-3.5 h-3.5 rounded border-black/20 text-[#041a24] accent-[#041a24] focus:ring-0 cursor-pointer"
                 />
-                <label htmlFor="remember-me" className="text-xs text-[#41555f] cursor-pointer select-none">
+                <label htmlFor="remember-me" className="text-xs text-[#41555f] dark:text-text-muted cursor-pointer select-none">
                   Remember me
                 </label>
               </div>
@@ -242,11 +330,11 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={isPending}
-                className="w-full h-9 bg-[#1D4ED8] hover:bg-[#1E40AF] active:bg-[#1E3A8A] disabled:opacity-50 text-white font-medium text-xs rounded-[3px] shadow-2xs flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                className="w-full h-9 bg-[#041a24] dark:bg-primary-bg hover:bg-[#1c313b] dark:hover:bg-primary-bg/90 active:bg-black dark:active:bg-primary-bg/80 disabled:opacity-50 text-white dark:!text-primary-fg font-medium text-xs rounded-[3px] shadow-2xs flex items-center justify-center gap-2 transition-colors cursor-pointer border border-[#041a24] dark:border-primary-bg"
               >
                 {isPending ? (
                   <span className="flex items-center gap-2">
-                    <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-white dark:!text-primary-fg" />
                     <span>Signing in...</span>
                   </span>
                 ) : (
@@ -256,9 +344,9 @@ export default function LoginPage() {
 
               <div className="relative my-3 text-center">
                 <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-black/10" />
+                  <div className="w-full border-t border-black/10 dark:border-border" />
                 </div>
-                <span className="relative bg-white px-2 text-[10px] text-[#41555f] uppercase tracking-wider font-mono">
+                <span className="relative bg-white dark:bg-surface-1 px-2 text-[10px] text-[#41555f] dark:text-text-muted uppercase tracking-wider font-mono">
                   or
                 </span>
               </div>
@@ -266,13 +354,13 @@ export default function LoginPage() {
               <button
                 type="button"
                 onClick={() => handleQuickDemo('User')}
-                className="w-full h-9 bg-white hover:bg-neutral-50 border border-black/15 text-[#041a24] font-medium text-xs rounded-[3px] flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                className="w-full h-9 bg-white dark:bg-surface-2 hover:bg-neutral-50 dark:hover:bg-surface-3 border border-black/15 dark:border-border text-[#041a24] dark:text-text font-medium text-xs rounded-[3px] flex items-center justify-center gap-2 transition-colors cursor-pointer"
               >
                 <span className="font-bold text-[#EA4335] text-sm leading-none">G</span>
                 <span>Continue with Google</span>
               </button>
 
-              <div className="text-center pt-1 text-xs text-[#41555f] font-sans">
+              <div className="text-center pt-1 text-xs text-[#41555f] dark:text-text-muted font-sans">
                 Don&apos;t have an account?{' '}
                 <button
                   type="button"
@@ -280,7 +368,7 @@ export default function LoginPage() {
                     setMode('register');
                     setError(null);
                   }}
-                  className="font-medium text-[#1D4ED8] hover:underline"
+                  className="font-medium text-[#041a24] dark:text-text hover:underline cursor-pointer"
                 >
                   Register
                 </button>
@@ -288,14 +376,14 @@ export default function LoginPage() {
             </form>
           )}
 
-          {/* Registration Form (Fig 3) */}
+          {/* Registration Form */}
           {mode === 'register' && (
-            <form onSubmit={handleRegisterSubmit} className="space-y-3">
+            <form id="panel-register" role="tabpanel" aria-labelledby="tab-register" onSubmit={handleRegisterSubmit} className="space-y-3">
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label
                     htmlFor="reg-first"
-                    className="block text-xs font-semibold text-[#041a24] mb-1 font-sans"
+                    className="block font-mono text-[11px] uppercase tracking-[0.14em] font-medium text-[#41555f] dark:text-text-muted mb-1.5"
                   >
                     First name
                   </label>
@@ -305,13 +393,13 @@ export default function LoginPage() {
                     type="text"
                     required
                     placeholder="Jerry"
-                    className="w-full h-9 px-3 bg-white border border-black/15 focus:border-[#0284C7] rounded-[3px] text-xs text-[#041a24] placeholder-[#41555f]/60 outline-none transition-all font-sans"
+                    className="w-full h-9 px-3 bg-white dark:bg-surface-2 border border-black/15 dark:border-border focus:border-[#041a24] dark:focus:border-text rounded-[3px] text-xs text-[#041a24] dark:text-text placeholder-[#41555f]/60 dark:placeholder-text-muted/60 outline-none transition-all font-sans"
                   />
                 </div>
                 <div>
                   <label
                     htmlFor="reg-last"
-                    className="block text-xs font-semibold text-[#041a24] mb-1 font-sans"
+                    className="block font-mono text-[11px] uppercase tracking-[0.14em] font-medium text-[#41555f] dark:text-text-muted mb-1.5"
                   >
                     Last name
                   </label>
@@ -321,7 +409,7 @@ export default function LoginPage() {
                     type="text"
                     required
                     placeholder="Esperanza"
-                    className="w-full h-9 px-3 bg-white border border-black/15 focus:border-[#0284C7] rounded-[3px] text-xs text-[#041a24] placeholder-[#41555f]/60 outline-none transition-all font-sans"
+                    className="w-full h-9 px-3 bg-white dark:bg-surface-2 border border-black/15 dark:border-border focus:border-[#041a24] dark:focus:border-text rounded-[3px] text-xs text-[#041a24] dark:text-text placeholder-[#41555f]/60 dark:placeholder-text-muted/60 outline-none transition-all font-sans"
                   />
                 </div>
               </div>
@@ -329,7 +417,7 @@ export default function LoginPage() {
               <div>
                 <label
                   htmlFor="reg-email"
-                  className="block text-xs font-semibold text-[#041a24] mb-1 font-sans"
+                  className="block font-mono text-[11px] uppercase tracking-[0.14em] font-medium text-[#41555f] dark:text-text-muted mb-1.5"
                 >
                   Email address
                 </label>
@@ -339,14 +427,14 @@ export default function LoginPage() {
                   type="email"
                   required
                   placeholder="jcesperanza@neu.edu.ph"
-                  className="w-full h-9 px-3 bg-white border border-black/15 focus:border-[#0284C7] rounded-[3px] text-xs text-[#041a24] placeholder-[#41555f]/60 outline-none transition-all font-sans"
+                  className="w-full h-9 px-3 bg-white dark:bg-surface-2 border border-black/15 dark:border-border focus:border-[#041a24] dark:focus:border-text rounded-[3px] text-xs text-[#041a24] dark:text-text placeholder-[#41555f]/60 dark:placeholder-text-muted/60 outline-none transition-all font-sans"
                 />
               </div>
 
               <div>
                 <label
                   htmlFor="reg-password"
-                  className="block text-xs font-semibold text-[#041a24] mb-1 font-sans"
+                  className="block font-mono text-[11px] uppercase tracking-[0.14em] font-medium text-[#41555f] dark:text-text-muted mb-1.5"
                 >
                   Password
                 </label>
@@ -358,12 +446,13 @@ export default function LoginPage() {
                     required
                     minLength={4}
                     placeholder="••••••••••••"
-                    className="w-full h-9 pl-3 pr-9 bg-white border border-black/15 focus:border-[#0284C7] rounded-[3px] text-xs text-[#041a24] placeholder-[#41555f]/60 outline-none transition-all font-sans"
+                    className="w-full h-9 pl-3 pr-9 bg-white dark:bg-surface-2 border border-black/15 dark:border-border focus:border-[#041a24] dark:focus:border-text rounded-[3px] text-xs text-[#041a24] dark:text-text placeholder-[#41555f]/60 dark:placeholder-text-muted/60 outline-none transition-all font-sans"
                   />
                   <button
                     type="button"
                     onClick={() => setShowRegPassword(!showRegPassword)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-black/40 hover:text-[#041a24] p-1 rounded transition-colors"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-black/40 dark:text-text-muted hover:text-[#041a24] dark:hover:text-text p-1 rounded transition-colors"
+                    aria-label={showRegPassword ? 'Hide password' : 'Show password'}
                   >
                     {showRegPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                   </button>
@@ -373,11 +462,11 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={isPending}
-                className="w-full h-9 bg-[#1D4ED8] hover:bg-[#1E40AF] active:bg-[#1E3A8A] disabled:opacity-50 text-white font-medium text-xs rounded-[3px] shadow-2xs flex items-center justify-center gap-2 transition-colors cursor-pointer mt-1"
+                className="w-full h-9 bg-[#041a24] dark:bg-primary-bg hover:bg-[#1c313b] dark:hover:bg-primary-bg/90 active:bg-black dark:active:bg-primary-bg/80 disabled:opacity-50 text-white dark:!text-primary-fg font-medium text-xs rounded-[3px] shadow-2xs flex items-center justify-center gap-2 transition-colors cursor-pointer mt-1 border border-[#041a24] dark:border-primary-bg"
               >
                 {isPending ? (
                   <span className="flex items-center gap-2">
-                    <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-white dark:!text-primary-fg" />
                     <span>Registering...</span>
                   </span>
                 ) : (
@@ -387,9 +476,9 @@ export default function LoginPage() {
 
               <div className="relative my-3 text-center">
                 <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-black/10" />
+                  <div className="w-full border-t border-black/10 dark:border-border" />
                 </div>
-                <span className="relative bg-white px-2 text-[10px] text-[#41555f] uppercase tracking-wider font-mono">
+                <span className="relative bg-white dark:bg-surface-1 px-2 text-[10px] text-[#41555f] dark:text-text-muted uppercase tracking-wider font-mono">
                   or
                 </span>
               </div>
@@ -397,13 +486,13 @@ export default function LoginPage() {
               <button
                 type="button"
                 onClick={() => handleQuickDemo('User')}
-                className="w-full h-9 bg-white hover:bg-neutral-50 border border-black/15 text-[#041a24] font-medium text-xs rounded-[3px] flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                className="w-full h-9 bg-white dark:bg-surface-2 hover:bg-neutral-50 dark:hover:bg-surface-3 border border-black/15 dark:border-border text-[#041a24] dark:text-text font-medium text-xs rounded-[3px] flex items-center justify-center gap-2 transition-colors cursor-pointer"
               >
                 <span className="font-bold text-[#EA4335] text-sm leading-none">G</span>
                 <span>Continue with Google</span>
               </button>
 
-              <div className="text-center pt-1 text-xs text-[#41555f] font-sans">
+              <div className="text-center pt-1 text-xs text-[#41555f] dark:text-text-muted font-sans">
                 Already have an account?{' '}
                 <button
                   type="button"
@@ -411,7 +500,7 @@ export default function LoginPage() {
                     setMode('signin');
                     setError(null);
                   }}
-                  className="font-medium text-[#1D4ED8] hover:underline"
+                  className="font-medium text-[#041a24] dark:text-text hover:underline cursor-pointer"
                 >
                   Sign in
                 </button>
@@ -422,8 +511,8 @@ export default function LoginPage() {
       </main>
 
       {/* Footer */}
-      <footer className="relative z-10 w-full max-w-5xl mx-auto px-6 py-4 text-center text-xs text-[#41555f]">
-        Hope, Inc. ERP &bull; Student Explainer
+      <footer className="relative z-10 w-full max-w-5xl mx-auto px-6 py-4 text-center text-xs font-mono text-[#41555e]">
+        ElectronDB ERP &bull; Student Explainer
       </footer>
     </div>
   );
