@@ -108,7 +108,7 @@ export function CustomersMainView({
     }
 
     return result;
-  }, [initialCustomers, statusFilter, searchQuery]);
+  }, [initialCustomers, statusFilter, searchQuery, isAdmin]);
 
   // Pagination calculation
   const totalItems = filteredCustomers.length;

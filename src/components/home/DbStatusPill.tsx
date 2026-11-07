@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import type { DbHealthResult } from '@/lib/db-health';
 import {
@@ -30,7 +30,7 @@ export function DbStatusPill({ onStatusChange }: DbStatusPillProps) {
   const buttonRef = useRef<HTMLButtonElement>(null);
 
   // Fetch health data client-side after initial render
-  const fetchHealth = async (forceFresh = false) => {
+  const fetchHealth = useCallback(async (forceFresh = false) => {
     try {
       setLoading(true);
       const res = await fetch(`/api/health/db${forceFresh ? '?fresh=1' : ''}`);
@@ -94,7 +94,7 @@ export function DbStatusPill({ onStatusChange }: DbStatusPillProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [onStatusChange]);
 
   useEffect(() => {
     fetchHealth(false);
@@ -118,7 +118,7 @@ export function DbStatusPill({ onStatusChange }: DbStatusPillProps) {
       clearInterval(interval);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, []);
+  }, [fetchHealth]);
 
   // Close on outside click or Escape key
   useEffect(() => {

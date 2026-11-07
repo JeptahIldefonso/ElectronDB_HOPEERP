@@ -1,14 +1,26 @@
 import React from 'react';
 import type { Metadata } from 'next';
+import dynamic from 'next/dynamic';
 import { redirect } from 'next/navigation';
 import { getCurrentUser } from '@/app/actions/auth';
-import { DataModelMainView } from '@/components/data-model/DataModelMainView';
 
 export const metadata: Metadata = {
   title: 'Data Model — HOPE, Inc. Relational Architecture',
   description:
     'Interactive 3NF relational data model diagram for HOPE, Inc. ERP, mapping 10 canonical tables and 9 foreign key relationships.',
 };
+
+// Code-split heavy data-model SVG diagram and export tools to optimize bundle size (PERFORMANCE.md)
+const DataModelMainView = dynamic(
+  () => import('@/components/data-model/DataModelMainView').then((mod) => mod.DataModelMainView),
+  {
+    loading: () => (
+      <div className="flex h-full w-full items-center justify-center p-8 bg-surface-1">
+        <div className="animate-pulse font-mono text-xs text-text-muted">Loading Data Model Diagram...</div>
+      </div>
+    ),
+  }
+);
 
 export default async function DataModelPage() {
   const user = await getCurrentUser();
