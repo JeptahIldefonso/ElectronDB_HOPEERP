@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { addNewPriceAction } from '@/app/actions/products';
 import { formatPHP } from '@/lib/utils';
 import { formatPriceChange } from '@/lib/products';
+import { isDemoReadOnly } from '@/lib/is-readonly';
 import { AlertCircle, AlertTriangle } from 'lucide-react';
 
 interface NewPriceModalProps {
@@ -204,7 +205,7 @@ export function NewPriceModal({
             size="sm"
             disabled={isSubmitting || (isLargeChange && !confirmedLargeChange)}
           >
-            {isSubmitting ? 'Saving...' : 'Record new price'}
+            {isSubmitting ? 'Saving...' : isDemoReadOnly() ? 'Record new price (Read-Only Demo)' : 'Record new price'}
           </Button>
         </div>
       </form>

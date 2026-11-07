@@ -1,4 +1,4 @@
-import { getHopeDb, type DatabaseSync } from '@/lib/hope-db';
+import { getHopeDb, type HopeDatabase } from '@/lib/hope-db';
 
 // ========================================================================
 // TYPES & CONTRACTS (Section 3.6 Sales: Master-Detail)
@@ -154,7 +154,7 @@ export interface SaleLookupData {
   }>;
 }
 
-function getSqliteDb(): DatabaseSync {
+function getSqliteDb(): HopeDatabase {
   return getHopeDb();
 }
 
@@ -165,7 +165,7 @@ export async function getSalesPageData(): Promise<SalesPageData> {
   const db = getSqliteDb();
 
   // 1. Fetch Sales Headers with dynamically derived Total from active line items
-  const salesRows = db.prepare(`
+  const salesRows = await db.query(`
     SELECT 
       s.transNo,
       s.salesDate,
@@ -199,7 +199,7 @@ export async function getSalesPageData(): Promise<SalesPageData> {
     LEFT JOIN CUSTOMER c ON c.custNo = s.custNo
     LEFT JOIN EMPLOYEE e ON e.empNo = s.empNo
     ORDER BY s.transNo DESC
-  `).all() as any[];
+  `);
 
   const sales: SaleItem[] = salesRows.map((r) => {
     const isDeleted = Boolean(r.is_deleted === 1 || r.is_deleted === true || r.is_deleted === '1');
@@ -222,7 +222,7 @@ export async function getSalesPageData(): Promise<SalesPageData> {
   });
 
   // 2. Fetch Detail Lines
-  const lineRows = db.prepare(`
+  const lineRows = await db.query(`
     SELECT 
       sd.transNo,
       sd.prodCode,
@@ -243,7 +243,7 @@ export async function getSalesPageData(): Promise<SalesPageData> {
     JOIN SALES s ON s.transNo = sd.transNo
     LEFT JOIN PRODUCT p ON p.prodCode = sd.prodCode
     ORDER BY sd.transNo DESC, sd.prodCode ASC
-  `).all() as any[];
+  `);
 
   const lines: SaleDetailLineItem[] = lineRows.map((r) => {
     const isDeleted = Boolean(r.is_deleted === 1 || r.is_deleted === true || r.is_deleted === '1');
@@ -283,21 +283,21 @@ export async function getSalesPageData(): Promise<SalesPageData> {
   const nextSuggestedTransNo = `TR${String(nextTransNum).padStart(6, '0')}`;
 
   // 4. Fetch Lookups for Customer, Employee, Product
-  const custLookups = db.prepare(`
+  const custLookups = await db.query(`
     SELECT custNo, custName
     FROM CUSTOMER
     WHERE is_deleted = 0
     ORDER BY custName ASC
-  `).all() as any[];
+  `);
 
-  const empLookups = db.prepare(`
+  const empLookups = await db.query(`
     SELECT empNo, (firstName || ' ' || lastName) AS fullName
     FROM EMPLOYEE
     WHERE is_deleted = 0 AND sepDate IS NULL
     ORDER BY firstName ASC, lastName ASC
-  `).all() as any[];
+  `);
 
-  const prodLookups = db.prepare(`
+  const prodLookups = await db.query(`
     SELECT 
       p.prodCode,
       p.description,
@@ -314,7 +314,7 @@ export async function getSalesPageData(): Promise<SalesPageData> {
     FROM PRODUCT p
     WHERE p.is_deleted = 0
     ORDER BY p.prodCode ASC
-  `).all() as any[];
+  `);
 
   const lookups: SalesLookupData = {
     customers: custLookups.map((c) => ({
@@ -336,13 +336,13 @@ export async function getSalesPageData(): Promise<SalesPageData> {
   // 5. Query Recent Audits
   let recentAudits: SalesAuditItem[] = [];
   try {
-    const auditRows = db.prepare(`
+    const auditRows = await db.query(`
       SELECT audit_id, table_name, action, record_key, old_values, new_values, action_by, action_at
       FROM audit_log
       WHERE table_name IN ('SALES', 'SALESDETAIL')
       ORDER BY audit_id DESC
       LIMIT 30
-    `).all() as any[];
+    `);
 
     recentAudits = auditRows.map((a) => ({
       auditId: Number(a.audit_id),
@@ -398,7 +398,7 @@ export async function getSaleDetailData(transNo: string | number): Promise<SaleD
   const db = getSqliteDb();
   const cleanTrans = String(transNo).trim();
 
-  const saleRow = db.prepare(`
+  const saleRow = await db.get<any>(`
     SELECT 
       s.transNo,
       s.salesDate,
@@ -421,11 +421,11 @@ export async function getSaleDetailData(transNo: string | number): Promise<SaleD
     )
     LEFT JOIN DEPARTMENT d ON d.deptCode = jh.deptCode
     WHERE s.transNo = ?
-  `).get(cleanTrans) as any;
+  `, [cleanTrans]);
 
   if (!saleRow) return null;
 
-  const lineRows = db.prepare(`
+  const lineRows = await db.query(`
     SELECT 
       sd.transNo,
       s.salesDate,
@@ -459,7 +459,7 @@ export async function getSaleDetailData(transNo: string | number): Promise<SaleD
     LEFT JOIN PRODUCT p ON p.prodCode = sd.prodCode
     WHERE sd.transNo = ? AND sd.is_deleted = 0
     ORDER BY sd.prodCode ASC
-  `).all(cleanTrans) as any[];
+  `, [cleanTrans]);
 
   const items: SaleLineItem[] = lineRows.map((r) => {
     const qty = Number(r.quantity || 0);

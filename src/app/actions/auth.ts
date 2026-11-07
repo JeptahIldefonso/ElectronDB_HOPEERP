@@ -30,7 +30,7 @@ export const getCurrentUser = cache(async function getCurrentUser(): Promise<Use
   const demoName = cookieStore.get('hope_demo_name')?.value;
 
   if (demoRole && demoEmail) {
-    const account = findAccountByEmail(demoEmail);
+    const account = await findAccountByEmail(demoEmail);
     if (account?.isBlocked) {
       return null;
     }
@@ -80,10 +80,10 @@ export async function loginAction(formData: FormData) {
     return { error: 'Please enter both email and password.' };
   }
 
-  ensureAuthDb();
+  await ensureAuthDb();
 
-  // 1. Look up account in local secure auth.db
-  const account = findAccountByEmail(email);
+  // 1. Look up account in unified DB
+  const account = await findAccountByEmail(email);
 
   if (account) {
     // Check if user is blocked (§3.8)
@@ -161,10 +161,10 @@ export async function registerAction(formData: FormData) {
     return { error: 'Password must be at least 4 characters.' };
   }
 
-  ensureAuthDb();
+  await ensureAuthDb();
 
   // 1. Prevent duplicate registrations
-  if (emailExists(email)) {
+  if (await emailExists(email)) {
     return { error: 'An account with this email address already exists. Please sign in.' };
   }
 
@@ -173,7 +173,7 @@ export async function registerAction(formData: FormData) {
 
   // 3. New registrations strictly get role 'User'
   try {
-    insertAccount(email, passwordHash, fullName, 'User');
+    await insertAccount(email, passwordHash, fullName, 'User');
   } catch (err: any) {
     return { error: err?.message || 'Failed to save account to database.' };
   }
@@ -204,8 +204,13 @@ export async function registerAction(formData: FormData) {
 
 /**
  * Instant demo login for prototype evaluation (§3.1, Fig 4).
+ * Demo safety: In production, one-click Superadmin access is disabled to protect database integrity.
  */
 export async function demoLoginAction(role: 'Superadmin' | 'Admin' | 'User' | UserRole) {
+  if (process.env.VERCEL && role === 'Superadmin') {
+    return { error: 'One-click Superadmin sign in is disabled on the live site for security. Please sign in with your credentials or use the User (Staff) demo account.' };
+  }
+
   const cookieStore = await cookies();
   const emailMap: Record<string, { email: string; name: string; role: UserRole }> = {
     Superadmin: { email: 'superadmin@hope.com', name: 'Michael Superadmin', role: 'Superadmin' },
@@ -254,7 +259,7 @@ export async function fetchUsersAction(): Promise<{ users: UserAccount[]; error?
       return { users: [], error: 'Access denied: Administrator privileges required.' };
     }
 
-    const users = getAllUsers(user.role);
+    const users = await getAllUsers(user.role);
     return { users };
   } catch (err: any) {
     return { users: [], error: err?.message || 'Failed to fetch users.' };
@@ -294,7 +299,7 @@ export async function toggleBlockUserAction(targetUserId: string): Promise<{ suc
       return { success: false, error: 'Access denied: Only administrators can block or unblock users.' };
     }
 
-    const res = toggleBlockUser(targetUserId, currentUser.fullName || 'Admin');
+    const res = await toggleBlockUser(targetUserId, currentUser.fullName || 'Admin');
     revalidatePath('/users');
     return res;
   } catch (err: any) {
@@ -309,7 +314,7 @@ export async function updateUserRightsAction(targetUserId: string, rightCodes: s
       return { success: false, error: 'Access denied: Only administrators can update user rights.' };
     }
 
-    const res = updateUserRights(targetUserId, rightCodes, currentUser.fullName || 'Admin');
+    const res = await updateUserRights(targetUserId, rightCodes, currentUser.fullName || 'Admin');
     revalidatePath('/users');
     return res;
   } catch (err: any) {
@@ -339,7 +344,7 @@ export async function createUserAction(data: {
     }
 
     const passwordHash = await hashPassword(data.password);
-    const res = adminCreateUser(
+    const res = await adminCreateUser(
       data.firstName,
       data.lastName,
       data.email,
@@ -383,7 +388,7 @@ export async function updateUserProfileAction(data: {
       passwordHash = await hashPassword(data.newPassword.trim());
     }
 
-    const res = updateUserProfile(
+    const res = await updateUserProfile(
       data.userId,
       data.firstName,
       data.lastName,

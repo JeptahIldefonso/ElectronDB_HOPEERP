@@ -28,7 +28,7 @@ export default async function ReportsPage() {
     redirect('/?denied=1');
   }
 
-  const employeesList = getEmployeesListForDropdown();
+  const employeesList = await getEmployeesListForDropdown();
   const firstEmpNo = employeesList[0]?.empNo || '00001';
 
   // Pre-fetch reports dataset

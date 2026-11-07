@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { X, AlertCircle, Loader2 } from 'lucide-react';
 import { addEmployeeAction } from '@/app/actions/employees';
 import type { JobItem, DepartmentItem } from '@/lib/data/employees';
+import { isDemoReadOnly } from '@/lib/is-readonly';
 
 interface AddEmployeeModalProps {
   isOpen: boolean;
@@ -273,7 +274,7 @@ export function AddEmployeeModal({
               className="px-4 py-1.5 text-xs font-medium rounded-md bg-[#001A2B] hover:bg-[#00263E] text-white shadow-sm flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-colors"
             >
               {isSubmitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-              <span>Save Employee</span>
+              <span>{isDemoReadOnly() ? 'Save Employee (Read-Only Demo)' : 'Save Employee'}</span>
             </button>
           </div>
         </form>

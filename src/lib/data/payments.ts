@@ -77,7 +77,7 @@ export async function getPaymentsLedger(filter?: {
 }): Promise<PaymentsLedgerData> {
   const db = getHopeDb();
 
-  const rawPayments = db.prepare(`
+  const rawPayments = await db.query(`
     SELECT 
       p.ORNo AS orNo,
       p.payDate,
@@ -105,7 +105,7 @@ export async function getPaymentsLedger(filter?: {
     JOIN SALES s ON s.transNo = p.transNo
     JOIN CUSTOMER c ON c.custNo = s.custNo
     ORDER BY p.payDate DESC, p.ORNo DESC
-  `).all() as any[];
+  `);
 
   let items: PaymentLedgerItem[] = rawPayments.map((r) => {
     const sTotal = Number(r.saleTotal || 0);
@@ -209,7 +209,7 @@ export async function getPaymentsLedger(filter?: {
 export async function getSalesForPayment(preselectedTransNo?: number): Promise<SaleForPaymentOption[]> {
   const db = getHopeDb();
 
-  const rawRows = db.prepare(`
+  const rawRows = await db.query(`
     SELECT 
       s.transNo,
       s.salesDate,
@@ -232,7 +232,7 @@ export async function getSalesForPayment(preselectedTransNo?: number): Promise<S
     JOIN CUSTOMER c ON c.custNo = s.custNo
     WHERE s.is_deleted = 0 OR s.is_deleted IS NULL
     ORDER BY s.salesDate DESC, s.transNo DESC
-  `).all() as any[];
+  `);
 
   return rawRows.map((r) => {
     const tot = Number(r.totalAmount || 0);
@@ -254,7 +254,7 @@ export async function getSalesForPayment(preselectedTransNo?: number): Promise<S
  */
 export async function getNextORNumberPreview(): Promise<number> {
   const db = getHopeDb();
-  const row = db.prepare('SELECT COALESCE(MAX(ORNo), 9000) + 1 AS nextOR FROM PAYMENT').get() as any;
+  const row = await db.get<any>('SELECT COALESCE(MAX(ORNo), 9000) + 1 AS nextOR FROM PAYMENT');
   return Number(row?.nextOR || 9001);
 }
 
@@ -269,10 +269,10 @@ export async function getOfficialReceipt(orNo: string | number): Promise<Officia
     ? rawStr
     : `OR${rawStr.padStart(6, '0')}`;
 
-  const payment = db.prepare('SELECT ORNo AS orNo, payDate, amount, transNo FROM PAYMENT WHERE ORNo = ? OR ORNo = ?').get(formattedOrNo, rawStr) as any;
+  const payment = await db.get<any>('SELECT ORNo AS orNo, payDate, amount, transNo FROM PAYMENT WHERE ORNo = ? OR ORNo = ?', [formattedOrNo, rawStr]);
   if (!payment) return null;
 
-  const sale = db.prepare(`
+  const sale = await db.get<any>(`
     SELECT 
       s.transNo,
       s.salesDate,
@@ -291,11 +291,11 @@ export async function getOfficialReceipt(orNo: string | number): Promise<Officia
     )
     JOIN DEPARTMENT d ON d.deptCode = jh.deptCode
     WHERE s.transNo = ?
-  `).get(payment.transNo) as any;
+  `, [payment.transNo]);
 
   if (!sale) return null;
 
-  const details = db.prepare(`
+  const details = await db.query<any>(`
     SELECT 
       sd.quantity,
       ph.unitPrice
@@ -304,7 +304,7 @@ export async function getOfficialReceipt(orNo: string | number): Promise<Officia
       SELECT MAX(effDate) FROM PRICEHIST WHERE prodCode = sd.prodCode AND effDate <= ?
     )
     WHERE sd.transNo = ?
-  `).all(sale.salesDate, payment.transNo) as any[];
+  `, [sale.salesDate, payment.transNo]);
 
   const totalAmount = details.reduce((sum, d) => sum + (Number(d.quantity) * Number(d.unitPrice)), 0);
 

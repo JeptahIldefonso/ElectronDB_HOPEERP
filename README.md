@@ -88,7 +88,12 @@ The sidebar displays each section label with a secondary descriptive caption:
 # 1. Install dependencies
 npm install
 
-# 2. Start development server
+# 2. Database Commands
+npm run db:verify        # Verifies 10 canonical tables and 928 records
+npm run db:reset         # Resets local working database (hope.work.db) from pristine seed (hope.db)
+npm run db:reset:turso   # Restores production Turso database (requires --confirm=RESET_PRODUCTION_TURSO)
+
+# 3. Start development server
 npm run dev
 ```
 

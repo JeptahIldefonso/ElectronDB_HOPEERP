@@ -118,21 +118,21 @@ export async function globalSearch(query: string): Promise<GlobalSearchResult[]>
   }
 
   // Local SQLite search
-  return getLocalSearchResults(trimmed);
+  return await getLocalSearchResults(trimmed);
 }
 
-function getLocalSearchResults(query: string): GlobalSearchResult[] {
+async function getLocalSearchResults(query: string): Promise<GlobalSearchResult[]> {
   const db = getHopeDb();
   const results: GlobalSearchResult[] = [];
   const likePattern = `%${query}%`;
 
   // 1. Search Customers by name or number
-  const customers = db.prepare(`
+  const customers = await db.query(`
     SELECT custNo, custName, payTerms
     FROM CUSTOMER
     WHERE custName LIKE ? OR CAST(custNo AS TEXT) LIKE ?
     LIMIT 4
-  `).all(likePattern, likePattern) as any[];
+  `, [likePattern, likePattern]);
 
   customers.forEach((c) => {
     results.push({
@@ -147,14 +147,14 @@ function getLocalSearchResults(query: string): GlobalSearchResult[] {
   // 2. Search Receipts by OR number (Task D: OR numbers open that customer's Payments tab)
   const orDigits = query.replace(/^OR\s*#?/i, '').trim();
   if (orDigits.length > 0) {
-    const receipts = db.prepare(`
+    const receipts = await db.query(`
       SELECT p.ORNo, p.payDate, p.amount, s.custNo, c.custName
       FROM PAYMENT p
       JOIN SALES s ON p.transNo = s.transNo
       JOIN CUSTOMER c ON s.custNo = c.custNo
       WHERE CAST(p.ORNo AS TEXT) LIKE ?
       LIMIT 4
-    `).all(`%${orDigits}%`) as any[];
+    `, [`%${orDigits}%`]);
 
     receipts.forEach((r) => {
       results.push({
@@ -168,12 +168,12 @@ function getLocalSearchResults(query: string): GlobalSearchResult[] {
   }
 
   // 3. Search Sales Transactions by transNo or customer name
-  const sales = db.prepare(`
+  const sales = await db.query(`
     SELECT transNo, salesDate, custName, totalAmount
     FROM v_sales_summary
     WHERE CAST(transNo AS TEXT) LIKE ? OR custName LIKE ?
     LIMIT 4
-  `).all(likePattern, likePattern) as any[];
+  `, [likePattern, likePattern]);
 
   sales.forEach((s) => {
     results.push({
@@ -186,12 +186,12 @@ function getLocalSearchResults(query: string): GlobalSearchResult[] {
   });
 
   // 4. Search Products by prodCode or description
-  const products = db.prepare(`
+  const products = await db.query(`
     SELECT prodCode, description, unit, currentPrice
     FROM v_product_sales_analytics
     WHERE prodCode LIKE ? OR description LIKE ?
     LIMIT 4
-  `).all(likePattern, likePattern) as any[];
+  `, [likePattern, likePattern]);
 
   products.forEach((p) => {
     const parsed = parseProductDescription(p.prodCode, p.description, p.unit);

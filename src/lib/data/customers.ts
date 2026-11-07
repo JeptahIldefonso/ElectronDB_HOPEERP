@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
-import { getHopeDb, type DatabaseSync } from '@/lib/hope-db';
+import { getHopeDb } from '@/lib/hope-db';
 
 export interface CustomerItem {
   custNo: string;
@@ -86,7 +86,7 @@ export interface CustomerSalesSummaryItem {
   salesDate: string;
 }
 
-function getSqliteDb(): DatabaseSync {
+function getSqliteDb() {
   return getHopeDb();
 }
 
@@ -168,13 +168,13 @@ export async function getCustomersPageData(): Promise<{
   }
 
   // SQLite implementation directly querying canonical CUSTOMER table
-  const db = getSqliteDb();
+  const db = getHopeDb();
 
-  const rows = db.prepare(`
+  const rows = await db.query(`
     SELECT custNo, custName, address, payterm, is_deleted, stamp 
     FROM CUSTOMER 
     ORDER BY custNo ASC
-  `).all() as any[];
+  `);
 
   const customers: CustomerItem[] = rows.map((r) => {
     const isDeleted = Boolean(r.is_deleted === 1 || r.is_deleted === true || r.is_deleted === '1');
@@ -211,13 +211,13 @@ export async function getCustomersPageData(): Promise<{
 
   let recentAudits: CustomerAuditLogItem[] = [];
   try {
-    const auditRows = db.prepare(`
+    const auditRows = await db.query(`
       SELECT audit_id, action, record_key, old_values, new_values, action_by, action_at
       FROM audit_log
       WHERE table_name = 'CUSTOMER'
       ORDER BY audit_id DESC
       LIMIT 20
-    `).all() as any[];
+    `);
 
     recentAudits = auditRows.map((a) => ({
       auditId: Number(a.audit_id),

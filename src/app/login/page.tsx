@@ -71,7 +71,10 @@ export default function LoginPage() {
   const handleQuickDemo = (role: 'Superadmin' | 'Admin' | 'User') => {
     setError(null);
     startTransition(async () => {
-      await demoLoginAction(role);
+      const res = await demoLoginAction(role);
+      if (res?.error) {
+        setError(res.error);
+      }
     });
   };
 

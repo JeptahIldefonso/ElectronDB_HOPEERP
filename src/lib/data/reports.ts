@@ -1,7 +1,7 @@
-import { DatabaseSync } from 'node:sqlite';
-import { getHopeDb } from '@/lib/hope-db';
+import { getHopeDb, type HopeDatabase } from '@/lib/hope-db';
 
-function getDb(): DatabaseSync {
+
+function getDb(): HopeDatabase {
   return getHopeDb();
 }
 
@@ -29,7 +29,7 @@ export interface TopCustomerRow {
   totalSalesFormatted: string;
 }
 
-export function getTopCustomers(fromDate = '2010-01-01', toDate = '2026-12-31', topN = 10): TopCustomerRow[] {
+export async function getTopCustomers(fromDate = '2010-01-01', toDate = '2026-12-31', topN = 10): Promise<TopCustomerRow[]> {
   const db = getDb();
   const effectiveFrom = fromDate || '2000-01-01';
   const effectiveTo = toDate || '2099-12-31';
@@ -61,7 +61,7 @@ export function getTopCustomers(fromDate = '2010-01-01', toDate = '2026-12-31', 
   `;
 
   try {
-    const rows = db.prepare(query).all(effectiveFrom, effectiveTo, effectiveTopN) as any[];
+    const rows = await db.query(query, [effectiveFrom, effectiveTo, effectiveTopN]);
     return rows.map((r, idx) => ({
       rank: idx + 1,
       custNo: String(r.custNo),
@@ -86,7 +86,7 @@ export interface ProductMasterRow {
   currentPriceFormatted: string;
 }
 
-export function getProductMasterList(): ProductMasterRow[] {
+export async function getProductMasterList(): Promise<ProductMasterRow[]> {
   const db = getDb();
   const query = `
     SELECT 
@@ -108,7 +108,7 @@ export function getProductMasterList(): ProductMasterRow[] {
   `;
 
   try {
-    const rows = db.prepare(query).all() as any[];
+    const rows = await db.query(query);
     return rows.map((r) => {
       const price = r.currentPrice !== null && r.currentPrice !== undefined ? Number(r.currentPrice) : null;
       return {
@@ -136,7 +136,7 @@ export interface TopProductRow {
   salesAmountFormatted: string;
 }
 
-export function getTopProducts(fromDate = '2010-01-01', toDate = '2026-12-31', topN = 10): TopProductRow[] {
+export async function getTopProducts(fromDate = '2010-01-01', toDate = '2026-12-31', topN = 10): Promise<TopProductRow[]> {
   const db = getDb();
   const effectiveFrom = fromDate || '2000-01-01';
   const effectiveTo = toDate || '2099-12-31';
@@ -169,7 +169,7 @@ export function getTopProducts(fromDate = '2010-01-01', toDate = '2026-12-31', t
   `;
 
   try {
-    const rows = db.prepare(query).all(effectiveFrom, effectiveTo, effectiveTopN) as any[];
+    const rows = await db.query(query, [effectiveFrom, effectiveTo, effectiveTopN]);
     return rows.map((r, idx) => ({
       rank: idx + 1,
       prodCode: String(r.prodCode),
@@ -196,7 +196,7 @@ export interface ActiveEmployeeRow {
   hireDate: string;
 }
 
-export function getActiveEmployees(): ActiveEmployeeRow[] {
+export async function getActiveEmployees(): Promise<ActiveEmployeeRow[]> {
   const db = getDb();
   const query = `
     SELECT empNo, lastName, firstName, gender, birthDate, hireDate
@@ -207,7 +207,7 @@ export function getActiveEmployees(): ActiveEmployeeRow[] {
   `;
 
   try {
-    const rows = db.prepare(query).all() as any[];
+    const rows = await db.query(query);
     return rows.map((r) => ({
       empNo: String(r.empNo),
       lastName: String(r.lastName || ''),
@@ -235,7 +235,7 @@ export interface AllEmployeeRow {
   status: 'Active' | 'Inactive';
 }
 
-export function getAllEmployeesReport(): AllEmployeeRow[] {
+export async function getAllEmployeesReport(): Promise<AllEmployeeRow[]> {
   const db = getDb();
   const query = `
     SELECT empNo, lastName, firstName, gender, birthDate, hireDate, sepDate, is_deleted
@@ -244,7 +244,7 @@ export function getAllEmployeesReport(): AllEmployeeRow[] {
   `;
 
   try {
-    const rows = db.prepare(query).all() as any[];
+    const rows = await db.query(query);
     return rows.map((r) => {
       const isSep = Boolean(r.sepDate && String(r.sepDate).trim() !== '');
       const isInactive = isSep || Boolean(r.is_deleted);
@@ -275,7 +275,7 @@ export interface EmployeeJobHistoryRow {
   salaryFormatted: string;
 }
 
-export function getEmployeeJobHistoryReport(empNo: string | number): EmployeeJobHistoryRow[] {
+export async function getEmployeeJobHistoryReport(empNo: string | number): Promise<EmployeeJobHistoryRow[]> {
   const db = getDb();
   const cleanEmpNo = String(empNo).trim();
   const query = `
@@ -292,7 +292,7 @@ export function getEmployeeJobHistoryReport(empNo: string | number): EmployeeJob
   `;
 
   try {
-    const rows = db.prepare(query).all(cleanEmpNo) as any[];
+    const rows = await db.query(query, [cleanEmpNo]);
     return rows.map((r) => ({
       effDate: String(r.effDate || ''),
       job: String(r.job || ''),
@@ -318,7 +318,7 @@ export interface TopSaleRow {
   totalFormatted: string;
 }
 
-export function getTopSales(fromDate = '2010-01-01', toDate = '2026-12-31', topN = 10): TopSaleRow[] {
+export async function getTopSales(fromDate = '2010-01-01', toDate = '2026-12-31', topN = 10): Promise<TopSaleRow[]> {
   const db = getDb();
   const effectiveFrom = fromDate || '2000-01-01';
   const effectiveTo = toDate || '2099-12-31';
@@ -353,7 +353,7 @@ export function getTopSales(fromDate = '2010-01-01', toDate = '2026-12-31', topN
   `;
 
   try {
-    const rows = db.prepare(query).all(effectiveFrom, effectiveTo, effectiveTopN) as any[];
+    const rows = await db.query(query, [effectiveFrom, effectiveTo, effectiveTopN]);
     return rows.map((r, idx) => ({
       rank: idx + 1,
       transNo: String(r.transNo),
@@ -368,15 +368,15 @@ export function getTopSales(fromDate = '2010-01-01', toDate = '2026-12-31', topN
   }
 }
 
-export function getEmployeesListForDropdown(): Array<{ empNo: string; fullName: string }> {
+export async function getEmployeesListForDropdown(): Promise<Array<{ empNo: string; fullName: string }>> {
   const db = getDb();
   try {
-    const rows = db.prepare(`
+    const rows = await db.query(`
       SELECT empNo, empNo || ' — ' || firstName || ' ' || lastName as fullName 
       FROM EMPLOYEE 
       WHERE is_deleted = 0
       ORDER BY empNo ASC
-    `).all() as any[];
+    `);
     return rows.map((r) => ({
       empNo: String(r.empNo),
       fullName: String(r.fullName),

@@ -1,8 +1,8 @@
-import { DatabaseSync } from 'node:sqlite';
 import {
   getHopeDb,
   ensureHopeDb,
   CANONICAL_ERD_TABLES,
+  type HopeDatabase,
   type DbHealthReason,
 } from './hope-db';
 
@@ -31,14 +31,14 @@ export interface DbHealthResult {
 let cachedHealth: { result: DbHealthResult; expiresAt: number } | null = null;
 
 /**
- * Reuses the canonical SQLite instance used by business data layers.
+ * Reuses the canonical database instance used by business data layers.
  */
-export function getBusinessDb(): DatabaseSync {
+export function getBusinessDb(): HopeDatabase {
   return getHopeDb();
 }
 
 /**
- * Performs timed verification against hope.db without exposing internal paths or SQL details.
+ * Performs timed verification against hope.db/Turso without exposing internal secrets or paths.
  */
 export async function checkDatabaseHealth(forceFresh = false): Promise<DbHealthResult> {
   const now = Date.now();
@@ -56,94 +56,96 @@ export async function checkDatabaseHealth(forceFresh = false): Promise<DbHealthR
   });
 
   try {
-    // 1. Ensure database is prepared (with 8s timeout for cold-start copy)
+    // 1. Ensure initialization is complete
     const initTimeoutPromise = new Promise<string>((_, reject) =>
       setTimeout(() => reject(Object.assign(new Error('Cold start initialization timeout'), { code: 'timeout' })), 8000)
     );
     await Promise.race([ensureHopeDb(), initTimeoutPromise]);
 
-    // 2. Perform health queries (with 3s query timeout)
-    const checkPromise = new Promise<DbHealthResult>((resolve, reject) => {
-      try {
-        const db = getHopeDb();
+    // 2. Perform health queries (with 5s query timeout)
+    const runCheck = async (): Promise<DbHealthResult> => {
+      const db = getHopeDb();
 
-        // Ping test
-        db.prepare('SELECT 1 as ping').get();
-        const latencyMs = Math.max(1, Math.round(performance.now() - startTime));
+      // Ping test
+      await db.get('SELECT 1 as ping');
+      const latencyMs = Math.max(1, Math.round(performance.now() - startTime));
 
-        // Discover existing tables
-        const masterTables = db
-          .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
-          .all() as Array<{ name: string }>;
-        const existingTableNames = new Set(masterTables.map((t) => t.name.toUpperCase()));
+      // Discover existing tables
+      const masterTables = await db.query<{ name: string }>(
+        "SELECT name FROM sqlite_master WHERE type = 'table'"
+      );
+      const existingTableNames = new Set(masterTables.map((t) => t.name.toUpperCase()));
 
-        // Inspect each canonical table
-        const tables: TableHealth[] = [];
-        let tablesFound = 0;
+      // Inspect each canonical table
+      const tables: TableHealth[] = [];
+      let tablesFound = 0;
 
-        for (const tableName of CANONICAL_ERD_TABLES) {
-          const exists = existingTableNames.has(tableName);
-          let rows = 0;
-          if (exists) {
-            tablesFound++;
-            try {
-              const countRow = db
-                .prepare(`SELECT COUNT(*) as count FROM "${tableName}"`)
-                .get() as { count: number };
-              rows = countRow?.count ?? 0;
-            } catch {
-              // Table exists but query failed
-            }
+      for (const tableName of CANONICAL_ERD_TABLES) {
+        const exists = existingTableNames.has(tableName);
+        let rows = 0;
+        if (exists) {
+          tablesFound++;
+          try {
+            const countRow = await db.get<{ count: number }>(
+              `SELECT COUNT(*) as count FROM "${tableName}"`
+            );
+            rows = countRow?.count ?? 0;
+          } catch {
+            // Table exists but query failed
           }
-          tables.push({
-            name: tableName,
-            exists,
-            rows,
-          });
         }
-
-        const isFull = tablesFound === CANONICAL_ERD_TABLES.length;
-        const isPartial = tablesFound > 0 && tablesFound < CANONICAL_ERD_TABLES.length;
-
-        const status: 'connected' | 'partial' | 'disconnected' = isFull
-          ? 'connected'
-          : isPartial
-          ? 'partial'
-          : 'disconnected';
-
-        let reason: DbHealthReason | undefined = undefined;
-        let message = 'Database integrity verified';
-
-        if (status === 'disconnected') {
-          reason = 'table_missing';
-          message = 'Database contains no tables';
-        } else if (status === 'partial') {
-          reason = 'table_missing';
-          message = `Missing ${CANONICAL_ERD_TABLES.length - tablesFound} table(s)`;
-        }
-
-        resolve({
-          connected: status !== 'disconnected',
-          status,
-          engine: 'SQLite (hope.db)',
-          tablesExpected: CANONICAL_ERD_TABLES.length,
-          tablesFound,
-          latencyMs,
-          checkedAt: checkedAtTime,
-          tables,
-          reason,
-          message,
+        tables.push({
+          name: tableName,
+          exists,
+          rows,
         });
-      } catch (err) {
-        reject(err);
       }
-    });
+
+      const isFull = tablesFound === CANONICAL_ERD_TABLES.length;
+      const isPartial = tablesFound > 0 && tablesFound < CANONICAL_ERD_TABLES.length;
+
+      const status: 'connected' | 'partial' | 'disconnected' = isFull
+        ? 'connected'
+        : isPartial
+        ? 'partial'
+        : 'disconnected';
+
+      let reason: DbHealthReason | undefined = undefined;
+      let message = 'Database integrity verified';
+
+      if (status === 'disconnected') {
+        reason = 'table_missing';
+        message = 'Database contains no tables';
+      } else if (status === 'partial') {
+        reason = 'table_missing';
+        message = `Missing ${CANONICAL_ERD_TABLES.length - tablesFound} table(s)`;
+      }
+
+      const engineName = db.isTurso
+        ? 'Turso Cloud libSQL'
+        : db.isReadOnly
+        ? 'SQLite (bundled read-only)'
+        : 'SQLite (hope.work.db)';
+
+      return {
+        connected: status !== 'disconnected',
+        status,
+        engine: engineName,
+        tablesExpected: CANONICAL_ERD_TABLES.length,
+        tablesFound,
+        latencyMs,
+        checkedAt: checkedAtTime,
+        tables,
+        reason,
+        message,
+      };
+    };
 
     const queryTimeoutPromise = new Promise<DbHealthResult>((_, reject) =>
-      setTimeout(() => reject(Object.assign(new Error('Health query timeout'), { code: 'timeout' })), 3000)
+      setTimeout(() => reject(Object.assign(new Error('Health query timeout'), { code: 'timeout' })), 5000)
     );
 
-    const result = await Promise.race([checkPromise, queryTimeoutPromise]);
+    const result = await Promise.race([runCheck(), queryTimeoutPromise]);
 
     cachedHealth = {
       result,
@@ -161,7 +163,7 @@ export async function checkDatabaseHealth(forceFresh = false): Promise<DbHealthR
       message = 'Database file missing';
     } else if (rawCode === 'open_failed') {
       reason = 'open_failed';
-      message = 'Could not open database file';
+      message = 'Could not open database connection';
     } else if (rawCode === 'timeout' || String(err?.message || '').toLowerCase().includes('timeout')) {
       reason = 'timeout';
       message = 'Database check timed out';
@@ -169,10 +171,17 @@ export async function checkDatabaseHealth(forceFresh = false): Promise<DbHealthR
 
     console.error(`[db-health] Health check failed (${reason}):`, err?.message || err);
 
+    const db = getHopeDb();
+    const engineName = db.isTurso
+      ? 'Turso Cloud libSQL'
+      : db.isReadOnly
+      ? 'SQLite (bundled read-only)'
+      : 'SQLite (hope.work.db)';
+
     const disconnectedResult: DbHealthResult = {
       connected: false,
       status: 'disconnected',
-      engine: 'SQLite (hope.db)',
+      engine: engineName,
       tablesExpected: CANONICAL_ERD_TABLES.length,
       tablesFound: 0,
       latencyMs: Math.round(performance.now() - startTime),
@@ -186,7 +195,6 @@ export async function checkDatabaseHealth(forceFresh = false): Promise<DbHealthR
       message,
     };
 
-    // Cache failure for at most 2 seconds
     cachedHealth = {
       result: disconnectedResult,
       expiresAt: now + 2_000,

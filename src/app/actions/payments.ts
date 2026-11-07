@@ -2,8 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
-import { getHopeDb } from '@/lib/hope-db';
-import { createClient } from '@/lib/supabase/server';
+import { getHopeDb, sanitizeDbError, isDatabaseReadOnly } from '@/lib/hope-db';
 import { getCurrentUser } from './auth';
 import { getSalesForPayment, getNextORNumberPreview } from '@/lib/data/payments';
 
@@ -35,12 +34,16 @@ export async function getPaymentFormDataAction(filter?: { transNo?: string | num
     }
     return { sales, nextOrPreview };
   } catch (err: any) {
-    return { error: err?.message || 'Failed to load sales for payment' };
+    return { error: sanitizeDbError(err, 'Failed to load sales for payment.') };
   }
 }
 
 export async function recordPaymentAction(input: RecordPaymentInput) {
   try {
+    if (isDatabaseReadOnly()) {
+      return { error: 'This deployed environment is in read-only demo mode to protect canonical data. Writes are available in local development or with Turso configured.' };
+    }
+
     // 1. Validate input parameters with Zod
     const validated = recordPaymentSchema.parse(input);
 
@@ -52,72 +55,40 @@ export async function recordPaymentAction(input: RecordPaymentInput) {
       return { error: 'Access denied: Only authorized staff or administrators can record payments.' };
     }
 
-    const isSupabaseConfigured =
-      process.env.NEXT_PUBLIC_SUPABASE_URL &&
-      !process.env.NEXT_PUBLIC_SUPABASE_URL.includes('your-project') &&
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY &&
-      !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY.includes('your-anon');
-
-    if (isSupabaseConfigured) {
-      try {
-        const supabase = await createClient();
-
-        // Call Postgres RPC function which handles row locking, advisory locking, date checks, total checks, and sequenced OR insertion
-        const { data, error } = await supabase.rpc('record_payment_receipt', {
-          p_trans_no: validated.transNo,
-          p_amount: validated.amount,
-          p_pay_date: validated.payDate,
-        });
-
-        if (error) {
-          return { error: error.message };
-        }
-
-        revalidatePath('/payments');
-        revalidatePath('/customers');
-        revalidatePath('/sales');
-        revalidatePath('/');
-        return { success: true, orNo: (data as any)?.orNo };
-      } catch (err: any) {
-        return { error: err?.message || 'Database error recording payment' };
-      }
-    }
-
-    // SQLite fallback with matching transactional constraints
     const db = getHopeDb();
 
-    db.exec('BEGIN IMMEDIATE');
+    await db.exec('BEGIN TRANSACTION');
 
     try {
       // 1. Fetch sale (supports TR000001 or numeric ID)
       const rawTrans = String(validated.transNo).trim();
       const transNo = rawTrans.startsWith('TR') ? rawTrans : (/^\d+$/.test(rawTrans) ? `TR${rawTrans.padStart(6, '0')}` : rawTrans);
 
-      const sale = db.prepare('SELECT transNo, salesDate FROM SALES WHERE transNo = ? OR transNo = ?').get(transNo, rawTrans) as any;
+      const sale = await db.get<any>('SELECT transNo, salesDate FROM SALES WHERE transNo = ? OR transNo = ?', [transNo, rawTrans]);
       if (!sale) {
-        db.exec('ROLLBACK');
+        await db.exec('ROLLBACK');
         return { error: `Transaction #${validated.transNo} does not exist.` };
       }
 
       // 2. Date checks
       const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
       if (validated.payDate < sale.salesDate) {
-        db.exec('ROLLBACK');
+        await db.exec('ROLLBACK');
         return { error: `Payment date cannot be before the sale date (${sale.salesDate}).` };
       }
       if (validated.payDate > todayStr) {
-        db.exec('ROLLBACK');
+        await db.exec('ROLLBACK');
         return { error: 'Payment date cannot be in the future.' };
       }
 
-      const latestPay = db.prepare('SELECT MAX(payDate) AS maxDate FROM PAYMENT WHERE transNo = ?').get(sale.transNo) as any;
+      const latestPay = await db.get<any>('SELECT MAX(payDate) AS maxDate FROM PAYMENT WHERE transNo = ?', [sale.transNo]);
       if (latestPay?.maxDate && validated.payDate < latestPay.maxDate) {
-        db.exec('ROLLBACK');
+        await db.exec('ROLLBACK');
         return { error: `Payment date cannot be before the latest receipt date (${latestPay.maxDate}).` };
       }
 
       // 3. Compute sale total using point-in-time pricing
-      const details = db.prepare(`
+      const details = await db.query<any>(`
         SELECT 
           sd.quantity,
           ph.unitPrice
@@ -128,39 +99,39 @@ export async function recordPaymentAction(input: RecordPaymentInput) {
           WHERE ph2.prodCode = sd.prodCode AND ph2.effDate <= ?
         )
         WHERE sd.transNo = ?
-      `).all(sale.salesDate, sale.transNo) as any[];
+      `, [sale.salesDate, sale.transNo]);
 
       const saleTotal = details.reduce((sum, d) => sum + (Number(d.quantity) * Number(d.unitPrice)), 0);
 
       // 4. Compute existing payments on this sale
-      const paySumRow = db.prepare('SELECT COALESCE(SUM(amount), 0) AS totalPaid FROM PAYMENT WHERE transNo = ?').get(sale.transNo) as any;
-      const existingPayments = Number(paySumRow.totalPaid);
+      const paySumRow = await db.get<any>('SELECT COALESCE(SUM(amount), 0) AS totalPaid FROM PAYMENT WHERE transNo = ?', [sale.transNo]);
+      const existingPayments = Number(paySumRow?.totalPaid || 0);
 
       // 5. Check if total payments would exceed sale total
       if (existingPayments + validated.amount > saleTotal) {
-        db.exec('ROLLBACK');
+        await db.exec('ROLLBACK');
         const formattedTotal = saleTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         return { error: `Payments for this sale would exceed its total of ₱${formattedTotal}.` };
       }
 
       // 6. Assign next OR number in sequence
-      const maxOrRow = db.prepare(`
+      const maxOrRow = await db.get<any>(`
         SELECT COALESCE(
           MAX(CAST(SUBSTR(ORNo, 3) AS INTEGER)),
           MAX(CAST(ORNo AS INTEGER)),
           0
         ) + 1 AS nextNum FROM PAYMENT
-      `).get() as any;
+      `);
       const nextNum = Number(maxOrRow?.nextNum || 166);
       const orNo = `OR${String(nextNum).padStart(6, '0')}`;
 
       // 7. Insert payment
-      db.prepare(`
+      await db.run(`
         INSERT INTO PAYMENT (ORNo, payDate, amount, transNo, stamp)
         VALUES (?, ?, ?, ?, 'ADD cashier ' || strftime('%Y-%m-%d %H:%M', 'now', '+8 hours'))
-      `).run(orNo, validated.payDate, validated.amount, sale.transNo);
+      `, [orNo, validated.payDate, validated.amount, sale.transNo]);
 
-      db.exec('COMMIT');
+      await db.exec('COMMIT');
 
       revalidatePath('/payments');
       revalidatePath('/customers');
@@ -169,13 +140,12 @@ export async function recordPaymentAction(input: RecordPaymentInput) {
 
       return { success: true, orNo };
     } catch (txErr: any) {
-      db.exec('ROLLBACK');
-      return { error: txErr?.message || 'Database error executing payment' };
+      try {
+        await db.exec('ROLLBACK');
+      } catch {}
+      return { error: sanitizeDbError(txErr, 'Database error executing payment.') };
     }
   } catch (err: any) {
-    if (err instanceof z.ZodError) {
-      return { error: err.errors[0]?.message || 'Invalid payment parameters' };
-    }
-    return { error: err?.message || 'Failed to record official payment receipt' };
+    return { error: sanitizeDbError(err, 'Failed to record official payment receipt.') };
   }
 }

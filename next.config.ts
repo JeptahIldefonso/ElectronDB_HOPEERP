@@ -2,6 +2,9 @@ import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  env: {
+    NEXT_PUBLIC_IS_READONLY: process.env.VERCEL ? 'true' : 'false',
+  },
   outputFileTracingIncludes: {
     '/api/**/*': ['./hope.db'],
     '/**/*': ['./hope.db'],

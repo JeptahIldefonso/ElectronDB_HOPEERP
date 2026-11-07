@@ -211,7 +211,7 @@ export async function getHomeSummary(forceFailure = false): Promise<HomeSummaryR
       const db = getHopeDb();
       for (const table of Object.keys(FALLBACK_COUNTS)) {
         try {
-          const row = db.prepare(`SELECT count(*) as cnt FROM "${table}"`).get() as { cnt: number };
+          const row = await db.get<{ cnt: number }>(`SELECT count(*) as cnt FROM "${table}"`);
           if (row && typeof row.cnt === 'number') {
             counts[table] = row.cnt;
           }
@@ -222,9 +222,9 @@ export async function getHomeSummary(forceFailure = false): Promise<HomeSummaryR
 
       // Dynamic KPIs directly from canonical tables & views
       try {
-        const revRow = db.prepare('SELECT SUM(totalAmount) as totalRev, count(*) as totalTrans FROM v_sales_summary').get() as any;
-        const payRow = db.prepare('SELECT SUM(amount) as totalPaid FROM PAYMENT').get() as any;
-        const empRow = db.prepare('SELECT count(*) as totalEmp FROM EMPLOYEE WHERE sepDate IS NULL').get() as any;
+        const revRow = await db.get<any>('SELECT SUM(totalAmount) as totalRev, count(*) as totalTrans FROM v_sales_summary');
+        const payRow = await db.get<any>('SELECT SUM(amount) as totalPaid FROM PAYMENT');
+        const empRow = await db.get<any>('SELECT count(*) as totalEmp FROM EMPLOYEE WHERE sepDate IS NULL');
 
         const totalSales = Number(revRow?.totalRev || 0);
         const totalTransactions = Number(revRow?.totalTrans || 0);
@@ -246,7 +246,7 @@ export async function getHomeSummary(forceFailure = false): Promise<HomeSummaryR
 
         // Detailed Audit Calculations for interactive modals
         try {
-          const allSalesRows = db.prepare(`
+          const allSalesRows = await db.query(`
             SELECT 
               s.transNo,
               s.salesDate,
@@ -259,7 +259,7 @@ export async function getHomeSummary(forceFailure = false): Promise<HomeSummaryR
             LEFT JOIN v_sale_lines l ON l.transNo = sd.transNo AND l.prodCode = sd.prodCode
             GROUP BY s.transNo, s.salesDate, c.custName
             ORDER BY s.salesDate ASC, s.transNo ASC
-          `).all() as any[];
+          `);
 
           let runSales = 0;
           kpis.salesAudit = allSalesRows.map((r) => {
@@ -277,14 +277,14 @@ export async function getHomeSummary(forceFailure = false): Promise<HomeSummaryR
           });
 
           // Customer transaction distribution
-          const custDistRows = db.prepare(`
+          const custDistRows = await db.query(`
             SELECT c.custName, count(s.transNo) as transCount, SUM(v.totalAmount) as custTotal
             FROM CUSTOMER c
             JOIN SALES s ON s.custNo = c.custNo
             JOIN v_sales_summary v ON v.transNo = s.transNo
             GROUP BY c.custName
             ORDER BY transCount DESC, custTotal DESC
-          `).all() as any[];
+          `);
 
           kpis.customerDistribution = custDistRows.map((r) => ({
             custName: String(r.custName),
@@ -293,11 +293,11 @@ export async function getHomeSummary(forceFailure = false): Promise<HomeSummaryR
           }));
 
           // Payments calculation audit
-          const allPayRows = db.prepare(`
+          const allPayRows = await db.query(`
             SELECT ORNo, payDate, amount, transNo
             FROM PAYMENT
             ORDER BY payDate ASC, ORNo ASC
-          `).all() as any[];
+          `);
 
           let runPay = 0;
           kpis.paymentsAudit = allPayRows.map((r) => {
@@ -314,7 +314,7 @@ export async function getHomeSummary(forceFailure = false): Promise<HomeSummaryR
           });
 
           // Employees calculation audit
-          const allEmpRows = db.prepare(`
+          const allEmpRows = await db.query(`
             SELECT 
               e.empNo,
               e.firstName || ' ' || e.lastName as fullName,
@@ -324,7 +324,7 @@ export async function getHomeSummary(forceFailure = false): Promise<HomeSummaryR
               COALESCE((SELECT j.jobDesc FROM JOBHISTORY jh JOIN JOB j ON j.jobCode = jh.jobCode WHERE jh.empNo = e.empNo ORDER BY jh.effDate DESC LIMIT 1), 'Employee') as jobDesc
             FROM EMPLOYEE e
             ORDER BY e.empNo ASC
-          `).all() as any[];
+          `);
 
           kpis.employeesAudit = allEmpRows.map((r) => ({
             empNo: Number(r.empNo),

@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
-import { getHopeDb, type DatabaseSync } from '@/lib/hope-db';
+import { getHopeDb, type HopeDatabase } from '@/lib/hope-db';
 
 export interface ProductItem {
   prodCode: string;
@@ -48,7 +48,7 @@ export type PriceHistoryItem = any;
 export type ProductsSummaryMetrics = any;
 export type ProductDetailItem = any;
 
-function getSqliteDb(): DatabaseSync {
+function getSqliteDb(): HopeDatabase {
   return getHopeDb();
 }
 
@@ -139,7 +139,7 @@ export async function getProductsPageData(): Promise<{
   // SQLite implementation
   const db = getSqliteDb();
 
-  const prodRows = db.prepare(`
+  const prodRows = await db.query(`
     SELECT 
       p.prodCode, 
       p.description, 
@@ -171,13 +171,13 @@ export async function getProductsPageData(): Promise<{
       ) AS priceCount
     FROM PRODUCT p
     ORDER BY p.prodCode ASC
-  `).all() as any[];
+  `);
 
-  const priceRows = db.prepare(`
+  const priceRows = await db.query(`
     SELECT effDate, prodCode, unitPrice, is_deleted, stamp
     FROM PRICEHIST
     ORDER BY effDate DESC, prodCode ASC
-  `).all() as any[];
+  `);
 
   const priceHistory: PriceRecordItem[] = priceRows.map((r) => {
     const isDeleted = Boolean(r.is_deleted === 1 || r.is_deleted === true || r.is_deleted === '1');
@@ -231,13 +231,13 @@ export async function getProductsPageData(): Promise<{
 
   let recentAudits: ProductAuditLogItem[] = [];
   try {
-    const auditRows = db.prepare(`
+    const auditRows = await db.query(`
       SELECT audit_id, table_name, action, record_key, old_values, new_values, action_by, action_at
       FROM audit_log
       WHERE table_name IN ('PRODUCT', 'PRICEHIST')
       ORDER BY audit_id DESC
       LIMIT 30
-    `).all() as any[];
+    `);
 
     recentAudits = auditRows.map((a) => ({
       auditId: Number(a.audit_id),

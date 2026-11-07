@@ -1,6 +1,6 @@
 // scripts/verify-db.mjs
 // Developer verification tool for Hope, Inc. ERP canonical database.
-// Tests opening hope.db via the canonical path resolution and node:sqlite engine.
+// Tests opening hope.db or hope.work.db via node:sqlite engine.
 
 import { DatabaseSync } from 'node:sqlite';
 import path from 'node:path';
@@ -25,29 +25,49 @@ export const CANONICAL_TABLES = [
 ];
 
 function resolveDbPath() {
+  const args = process.argv.slice(2);
+
+  // Explicit flags
+  if (args.includes('--seed') || args.includes('--master')) {
+    return path.join(rootDir, 'hope.db');
+  }
+  if (args.includes('--work')) {
+    return path.join(rootDir, 'hope.work.db');
+  }
+
+  const targetArg = args.find((a) => a.startsWith('--target='));
+  if (targetArg) {
+    const filename = targetArg.split('=')[1];
+    return path.resolve(rootDir, filename);
+  }
+
+  // Environment checks
   if (process.env.VERCEL) {
     const tmpPath = path.join('/tmp', 'hope.db');
-    if (!fs.existsSync(tmpPath)) {
-      const srcPath = path.join(rootDir, 'hope.db');
-      if (fs.existsSync(srcPath)) {
-        fs.mkdirSync(path.dirname(tmpPath), { recursive: true });
-        fs.copyFileSync(srcPath, tmpPath);
-      }
-    }
-    return tmpPath;
+    if (fs.existsSync(tmpPath)) return tmpPath;
+    return path.join(rootDir, 'hope.db');
   }
+
+  // Local default: check working copy if it exists, otherwise master seed
+  const workPath = path.join(rootDir, 'hope.work.db');
+  if (fs.existsSync(workPath)) {
+    return workPath;
+  }
+
   return path.join(rootDir, 'hope.db');
 }
 
 export function runDbVerification() {
   const startTime = performance.now();
+  const targetPath = resolveDbPath();
+  const isWorkDb = targetPath.endsWith('hope.work.db');
+
   console.log('----------------------------------------------------');
   console.log(' Hope, Inc. ERP — Database Verification Tool');
   console.log('----------------------------------------------------');
   console.log(`Environment: ${process.env.VERCEL ? 'Vercel Serverless (/tmp)' : 'Local Workstation'}`);
   console.log(`Node Version: ${process.version}`);
-
-  const targetPath = resolveDbPath();
+  console.log(`Target Type : ${isWorkDb ? 'Working Copy (hope.work.db)' : 'Master Seed (hope.db)'}`);
   console.log(`Target Path : ${targetPath}`);
 
   if (!fs.existsSync(targetPath)) {
@@ -99,15 +119,21 @@ export function runDbVerification() {
   const durationMs = (performance.now() - startTime).toFixed(2);
   console.log('----------------------------------------------------');
   console.log(`Tables Found : ${tablesFound} / ${CANONICAL_TABLES.length}`);
-  console.log(`Total Rows   : ${totalRows} (Expected: 928 canonical records)`);
+  console.log(`Total Rows   : ${totalRows} ${!isWorkDb ? '(Expected: 928 canonical records)' : ''}`);
   console.log(`Total Latency: ${durationMs} ms`);
 
   if (tablesFound === 10 && totalRows === 928) {
-    console.log('[STATUS: 100% VERIFIED CANONICAL DATA]');
+    console.log('[STATUS: 100% VERIFIED CANONICAL DATA (928 RECORDS)]');
+  } else if (tablesFound === 10) {
+    console.log(`[STATUS: 10/10 TABLES OPERATIONAL (${totalRows} ACTIVE RECORDS)]`);
   } else {
     console.warn('[STATUS: INCOMPLETE OR MISMATCHED DATA]');
   }
   console.log('----------------------------------------------------\n');
+
+  try {
+    db.close();
+  } catch {}
 }
 
 runDbVerification();

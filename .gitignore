@@ -40,6 +40,10 @@ yarn-error.log*
 auth.db
 auth.db*
 
+# local working database copy
+hope.work.db
+hope.work.db*
+
 # backups
 backups/
 

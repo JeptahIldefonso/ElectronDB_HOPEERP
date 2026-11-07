@@ -9,9 +9,13 @@
     "dev": "node --max-old-space-size=4096 node_modules/next/dist/bin/next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "db:reset": "node scripts/reset-db.mjs",
+    "db:reset:turso": "node scripts/reset-turso.mjs",
+    "db:verify": "node scripts/verify-db.mjs"
   },
   "dependencies": {
+    "@libsql/client": "^0.18.0",
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.49.1",
     "bcryptjs": "^3.0.3",

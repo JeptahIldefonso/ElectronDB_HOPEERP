@@ -2,11 +2,10 @@
 
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
-import { getHopeDb, type DatabaseSync } from '@/lib/hope-db';
-import { createClient } from '@/lib/supabase/server';
+import { getHopeDb, sanitizeDbError, isDatabaseReadOnly, type HopeDatabase } from '@/lib/hope-db';
 import { getCurrentUser, checkUserPermission } from './auth';
 
-function getSqliteDb(): DatabaseSync {
+function getSqliteDb(): HopeDatabase {
   return getHopeDb();
 }
 
@@ -90,6 +89,10 @@ export type RecordPaymentInput = {
  */
 export async function addCustomerAction(input: AddCustomerInput) {
   try {
+    if (isDatabaseReadOnly()) {
+      return { error: 'This deployed environment is in read-only demo mode to protect canonical data. Writes are available in local development or with Turso configured.' };
+    }
+
     const auth = await checkUserPermission('add_customer');
     if (!auth.authorized) {
       return { error: auth.error || 'Access denied: Missing right add_customer.' };
@@ -108,63 +111,31 @@ export async function addCustomerAction(input: AddCustomerInput) {
       custNo: rawCustNo,
     });
 
-    const isSupabaseConfigured =
-      process.env.NEXT_PUBLIC_SUPABASE_URL &&
-      !process.env.NEXT_PUBLIC_SUPABASE_URL.includes('your-project') &&
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY &&
-      !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY.includes('your-anon');
-
-    if (isSupabaseConfigured) {
-      try {
-        const supabase = await createClient();
-        const stampStr = getStampString('CREATED', userName);
-
-        const { error } = await supabase.from('CUSTOMER').insert({
-          custNo: validated.custNo,
-          custName: validated.custName,
-          address: validated.address,
-          payterm: validated.payTerms,
-          is_deleted: 0,
-          stamp: stampStr,
-        });
-
-        if (error) {
-          return { error: error.message };
-        }
-
-        revalidatePath('/customers');
-        return { success: true, custNo: validated.custNo };
-      } catch (err: any) {
-        return { error: err?.message || 'Database error creating customer.' };
-      }
-    }
-
-    // SQLite implementation
     const db = getSqliteDb();
 
     // R-02: Check unique custNo
-    const existing = db.prepare('SELECT 1 FROM CUSTOMER WHERE custNo = ?').get(validated.custNo);
+    const existing = await db.get('SELECT 1 FROM CUSTOMER WHERE custNo = ?', [validated.custNo]);
     if (existing) {
       return { error: `Customer number ${validated.custNo} is already in use (R-02).` };
     }
 
     const stampStr = getStampString('CREATED', userName);
 
-    db.prepare(`
+    await db.run(`
       INSERT INTO CUSTOMER (custNo, custName, address, payterm, is_deleted, stamp)
       VALUES (?, ?, ?, ?, 0, ?)
-    `).run(validated.custNo, validated.custName, validated.address, validated.payTerms, stampStr);
+    `, [validated.custNo, validated.custName, validated.address, validated.payTerms, stampStr]);
 
     // Audit log
     try {
-      db.prepare(`
+      await db.run(`
         INSERT INTO audit_log (table_name, action, record_key, new_values, action_by)
         VALUES ('CUSTOMER', 'ADD', ?, ?, ?)
-      `).run(
+      `, [
         validated.custNo,
         JSON.stringify({ custName: validated.custName, address: validated.address, payterm: validated.payTerms }),
         userName
-      );
+      ]);
     } catch {
       // Non-blocking if audit_log table does not exist
     }
@@ -172,10 +143,7 @@ export async function addCustomerAction(input: AddCustomerInput) {
     revalidatePath('/customers');
     return { success: true, custNo: validated.custNo };
   } catch (err: any) {
-    if (err instanceof z.ZodError) {
-      return { error: err.errors[0]?.message || 'Invalid customer input' };
-    }
-    return { error: err?.message || 'Failed to add customer' };
+    return { error: sanitizeDbError(err, 'Failed to add customer.') };
   }
 }
 
@@ -184,6 +152,10 @@ export async function addCustomerAction(input: AddCustomerInput) {
  */
 export async function updateCustomerAction(input: UpdateCustomerInput) {
   try {
+    if (isDatabaseReadOnly()) {
+      return { error: 'This deployed environment is in read-only demo mode to protect canonical data. Writes are available in local development or with Turso configured.' };
+    }
+
     const auth = await checkUserPermission('edit_customer');
     if (!auth.authorized) {
       return { error: auth.error || 'Access denied: Missing right edit_customer.' };
@@ -201,65 +173,32 @@ export async function updateCustomerAction(input: UpdateCustomerInput) {
       custNo: rawCustNo,
     });
 
-    const isSupabaseConfigured =
-      process.env.NEXT_PUBLIC_SUPABASE_URL &&
-      !process.env.NEXT_PUBLIC_SUPABASE_URL.includes('your-project') &&
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY &&
-      !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY.includes('your-anon');
-
-    if (isSupabaseConfigured) {
-      try {
-        const supabase = await createClient();
-        const stampStr = getStampString('EDITED', userName);
-
-        const { error } = await supabase
-          .from('CUSTOMER')
-          .update({
-            custName: validated.custName,
-            address: validated.address,
-            payterm: validated.payTerms,
-            stamp: stampStr,
-          })
-          .eq('custNo', validated.custNo);
-
-        if (error) {
-          return { error: error.message };
-        }
-
-        revalidatePath('/customers');
-        return { success: true };
-      } catch (err: any) {
-        return { error: err?.message || 'Database error updating customer.' };
-      }
-    }
-
-    // SQLite implementation
     const db = getSqliteDb();
 
-    const existing = db.prepare('SELECT custName, address, payterm FROM CUSTOMER WHERE custNo = ?').get(validated.custNo) as any;
+    const existing = await db.get<any>('SELECT custName, address, payterm FROM CUSTOMER WHERE custNo = ?', [validated.custNo]);
     if (!existing) {
       return { error: `Customer #${validated.custNo} was not found.` };
     }
 
     const stampStr = getStampString('EDITED', userName);
 
-    db.prepare(`
+    await db.run(`
       UPDATE CUSTOMER 
       SET custName = ?, address = ?, payterm = ?, stamp = ?
       WHERE custNo = ?
-    `).run(validated.custName, validated.address, validated.payTerms, stampStr, validated.custNo);
+    `, [validated.custName, validated.address, validated.payTerms, stampStr, validated.custNo]);
 
     // Audit log
     try {
-      db.prepare(`
+      await db.run(`
         INSERT INTO audit_log (table_name, action, record_key, old_values, new_values, action_by)
         VALUES ('CUSTOMER', 'EDIT', ?, ?, ?, ?)
-      `).run(
+      `, [
         validated.custNo,
         JSON.stringify(existing),
         JSON.stringify({ custName: validated.custName, address: validated.address, payterm: validated.payTerms }),
         userName
-      );
+      ]);
     } catch {
       // Non-blocking
     }
@@ -267,10 +206,7 @@ export async function updateCustomerAction(input: UpdateCustomerInput) {
     revalidatePath('/customers');
     return { success: true };
   } catch (err: any) {
-    if (err instanceof z.ZodError) {
-      return { error: err.errors[0]?.message || 'Invalid customer input' };
-    }
-    return { error: err?.message || 'Failed to update customer' };
+    return { error: sanitizeDbError(err, 'Failed to update customer.') };
   }
 }
 
@@ -280,6 +216,10 @@ export async function updateCustomerAction(input: UpdateCustomerInput) {
  */
 export async function deleteCustomerAction(custNo: string) {
   try {
+    if (isDatabaseReadOnly()) {
+      return { error: 'This deployed environment is in read-only demo mode to protect canonical data. Writes are available in local development or with Turso configured.' };
+    }
+
     const auth = await checkUserPermission('delete_customer');
     if (!auth.authorized) {
       return { error: auth.error || 'Access denied: Missing right delete_customer.' };
@@ -288,40 +228,9 @@ export async function deleteCustomerAction(custNo: string) {
     const userName = user?.fullName || user?.email?.split('@')[0] || 'staff';
     const cleanCustNo = String(custNo).trim();
 
-    const isSupabaseConfigured =
-      process.env.NEXT_PUBLIC_SUPABASE_URL &&
-      !process.env.NEXT_PUBLIC_SUPABASE_URL.includes('your-project') &&
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY &&
-      !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY.includes('your-anon');
-
-    if (isSupabaseConfigured) {
-      try {
-        const supabase = await createClient();
-        const stampStr = getStampString('DELETED', userName);
-
-        const { error } = await supabase
-          .from('CUSTOMER')
-          .update({
-            is_deleted: 1,
-            stamp: stampStr,
-          })
-          .eq('custNo', cleanCustNo);
-
-        if (error) {
-          return { error: error.message };
-        }
-
-        revalidatePath('/customers');
-        return { success: true };
-      } catch (err: any) {
-        return { error: err?.message || 'Database error soft-deleting customer.' };
-      }
-    }
-
-    // SQLite implementation
     const db = getSqliteDb();
 
-    const existing = db.prepare('SELECT is_deleted FROM CUSTOMER WHERE custNo = ?').get(cleanCustNo) as any;
+    const existing = await db.get<any>('SELECT is_deleted FROM CUSTOMER WHERE custNo = ?', [cleanCustNo]);
     if (!existing) {
       return { error: `Customer #${cleanCustNo} was not found.` };
     }
@@ -332,18 +241,18 @@ export async function deleteCustomerAction(custNo: string) {
 
     const stampStr = getStampString('DELETED', userName);
 
-    db.prepare(`
+    await db.run(`
       UPDATE CUSTOMER 
       SET is_deleted = 1, stamp = ?
       WHERE custNo = ?
-    `).run(stampStr, cleanCustNo);
+    `, [stampStr, cleanCustNo]);
 
     // Audit log
     try {
-      db.prepare(`
+      await db.run(`
         INSERT INTO audit_log (table_name, action, record_key, action_by)
         VALUES ('CUSTOMER', 'DELETE', ?, ?)
-      `).run(cleanCustNo, userName);
+      `, [cleanCustNo, userName]);
     } catch {
       // Non-blocking
     }
@@ -351,7 +260,7 @@ export async function deleteCustomerAction(custNo: string) {
     revalidatePath('/customers');
     return { success: true };
   } catch (err: any) {
-    return { error: err?.message || 'Failed to soft-delete customer.' };
+    return { error: sanitizeDbError(err, 'Failed to soft-delete customer.') };
   }
 }
 
@@ -361,6 +270,10 @@ export async function deleteCustomerAction(custNo: string) {
  */
 export async function restoreCustomerAction(custNo: string) {
   try {
+    if (isDatabaseReadOnly()) {
+      return { error: 'This deployed environment is in read-only demo mode to protect canonical data. Writes are available in local development or with Turso configured.' };
+    }
+
     const user = await getCurrentUser();
     const role = (user?.role || '').toLowerCase();
     if (role !== 'admin' && role !== 'superadmin') {
@@ -370,40 +283,9 @@ export async function restoreCustomerAction(custNo: string) {
     const userName = user?.fullName || user?.email?.split('@')[0] || role;
     const cleanCustNo = String(custNo).trim();
 
-    const isSupabaseConfigured =
-      process.env.NEXT_PUBLIC_SUPABASE_URL &&
-      !process.env.NEXT_PUBLIC_SUPABASE_URL.includes('your-project') &&
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY &&
-      !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY.includes('your-anon');
-
-    if (isSupabaseConfigured) {
-      try {
-        const supabase = await createClient();
-        const stampStr = getStampString('RESTORED', userName);
-
-        const { error } = await supabase
-          .from('CUSTOMER')
-          .update({
-            is_deleted: 0,
-            stamp: stampStr,
-          })
-          .eq('custNo', cleanCustNo);
-
-        if (error) {
-          return { error: error.message };
-        }
-
-        revalidatePath('/customers');
-        return { success: true };
-      } catch (err: any) {
-        return { error: err?.message || 'Database error restoring customer.' };
-      }
-    }
-
-    // SQLite implementation
     const db = getSqliteDb();
 
-    const existing = db.prepare('SELECT is_deleted FROM CUSTOMER WHERE custNo = ?').get(cleanCustNo) as any;
+    const existing = await db.get<any>('SELECT is_deleted FROM CUSTOMER WHERE custNo = ?', [cleanCustNo]);
     if (!existing) {
       return { error: `Customer #${cleanCustNo} was not found.` };
     }
@@ -414,18 +296,18 @@ export async function restoreCustomerAction(custNo: string) {
 
     const stampStr = getStampString('RESTORED', userName);
 
-    db.prepare(`
+    await db.run(`
       UPDATE CUSTOMER 
       SET is_deleted = 0, stamp = ?
       WHERE custNo = ?
-    `).run(stampStr, cleanCustNo);
+    `, [stampStr, cleanCustNo]);
 
     // Audit log
     try {
-      db.prepare(`
+      await db.run(`
         INSERT INTO audit_log (table_name, action, record_key, action_by)
         VALUES ('CUSTOMER', 'RESTORE', ?, ?)
-      `).run(cleanCustNo, userName);
+      `, [cleanCustNo, userName]);
     } catch {
       // Non-blocking
     }
@@ -433,7 +315,7 @@ export async function restoreCustomerAction(custNo: string) {
     revalidatePath('/customers');
     return { success: true };
   } catch (err: any) {
-    return { error: err?.message || 'Failed to restore customer.' };
+    return { error: sanitizeDbError(err, 'Failed to restore customer.') };
   }
 }
 
@@ -442,6 +324,10 @@ export async function restoreCustomerAction(custNo: string) {
  */
 export async function recordCustomerPaymentAction(input: RecordPaymentInput) {
   try {
+    if (isDatabaseReadOnly()) {
+      return { error: 'This deployed environment is in read-only demo mode to protect canonical data. Writes are available in local development or with Turso configured.' };
+    }
+
     const user = await getCurrentUser();
     const role = (user?.role || 'admin').toLowerCase();
     if (!['admin', 'superadmin', 'cashier'].includes(role)) {
@@ -456,27 +342,24 @@ export async function recordCustomerPaymentAction(input: RecordPaymentInput) {
     const rawTrans = String(validated.transNo).trim();
     const formattedTransNo = rawTrans.startsWith('TR') ? rawTrans : `TR${rawTrans.padStart(6, '0')}`;
 
-    const rawCust = String(validated.custNo).trim();
-    const formattedCustNo = rawCust.startsWith('C') ? rawCust : `C${rawCust.padStart(4, '0')}`;
-
-    const existingOr = db.prepare('SELECT 1 FROM PAYMENT WHERE ORNo = ? OR ORNo = ?').get(formattedOrNo, rawOr);
+    const existingOr = await db.get('SELECT 1 FROM PAYMENT WHERE ORNo = ? OR ORNo = ?', [formattedOrNo, rawOr]);
     if (existingOr) {
       return { error: `That OR number (${formattedOrNo}) is already recorded (R-08).` };
     }
 
-    const sale = db.prepare('SELECT salesDate, custNo FROM SALES WHERE transNo = ? OR transNo = ?').get(formattedTransNo, rawTrans) as any;
+    const sale = await db.get<any>('SELECT salesDate, custNo FROM SALES WHERE transNo = ? OR transNo = ?', [formattedTransNo, rawTrans]);
     if (!sale) {
       return { error: `Transaction #${formattedTransNo} does not exist in Sales records (R-05).` };
     }
 
-    db.prepare(`
+    await db.run(`
       INSERT INTO PAYMENT (ORNo, payDate, amount, transNo, stamp)
       VALUES (?, ?, ?, ?, 'ADD cashier ' || strftime('%Y-%m-%d %H:%M', 'now', '+8 hours'))
-    `).run(formattedOrNo, validated.payDate, validated.amount, sale.transNo || formattedTransNo);
+    `, [formattedOrNo, validated.payDate, validated.amount, sale.transNo || formattedTransNo]);
 
     revalidatePath('/customers');
     return { success: true, orNo: formattedOrNo };
   } catch (err: any) {
-    return { error: err?.message || 'Failed to record payment' };
+    return { error: sanitizeDbError(err, 'Failed to record payment.') };
   }
 }

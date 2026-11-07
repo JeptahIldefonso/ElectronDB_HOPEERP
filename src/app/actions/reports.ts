@@ -30,7 +30,7 @@ export async function fetchTopCustomersAction(
     if (!hasAccess) {
       return { error: 'Access denied: You do not have permission to view Top Customers report.' };
     }
-    const data = getTopCustomers(fromDate, toDate, topN);
+    const data = await getTopCustomers(fromDate, toDate, topN);
     return { data };
   } catch (err: any) {
     return { error: err?.message || 'Failed to fetch Top Customers report.' };
@@ -47,7 +47,7 @@ export async function fetchTopProductsAction(
     if (!hasAccess) {
       return { error: 'Access denied: You do not have permission to view Top Products report.' };
     }
-    const data = getTopProducts(fromDate, toDate, topN);
+    const data = await getTopProducts(fromDate, toDate, topN);
     return { data };
   } catch (err: any) {
     return { error: err?.message || 'Failed to fetch Top Products report.' };
@@ -64,7 +64,7 @@ export async function fetchTopSalesAction(
     if (!hasAccess) {
       return { error: 'Access denied: You do not have permission to view Top Sales report.' };
     }
-    const data = getTopSales(fromDate, toDate, topN);
+    const data = await getTopSales(fromDate, toDate, topN);
     return { data };
   } catch (err: any) {
     return { error: err?.message || 'Failed to fetch Top Sales report.' };
@@ -79,7 +79,7 @@ export async function fetchEmployeeJobHistoryAction(
     if (!hasAccess) {
       return { error: 'Access denied: You do not have permission to view Employee Job History report.' };
     }
-    const data = getEmployeeJobHistoryReport(empNo);
+    const data = await getEmployeeJobHistoryReport(empNo);
     return { data };
   } catch (err: any) {
     return { error: err?.message || 'Failed to fetch Employee Job History report.' };

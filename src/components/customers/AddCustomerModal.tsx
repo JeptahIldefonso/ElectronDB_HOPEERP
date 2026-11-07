@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { addCustomerAction } from '@/app/actions/customers';
 import { Button } from '@/components/ui/Button';
+import { isDemoReadOnly } from '@/lib/is-readonly';
 import { X, UserPlus, AlertCircle } from 'lucide-react';
 
 interface AddCustomerModalProps {
@@ -228,7 +229,7 @@ export function AddCustomerModal({
               disabled={isSubmitting}
               className="bg-[#001A2B] hover:bg-[#00263E] text-white transition-colors"
             >
-              {isSubmitting ? 'Saving...' : 'Add Customer'}
+              {isSubmitting ? 'Saving...' : isDemoReadOnly() ? 'Add Customer (Read-Only Demo)' : 'Add Customer'}
             </Button>
           </div>
         </form>

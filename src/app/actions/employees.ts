@@ -2,10 +2,10 @@
 
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
-import { getHopeDb, type DatabaseSync } from '@/lib/hope-db';
+import { getHopeDb, sanitizeDbError, isDatabaseReadOnly, type HopeDatabase } from '@/lib/hope-db';
 import { getCurrentUser, checkUserPermission } from './auth';
 
-function getSqliteDb(): DatabaseSync {
+function getSqliteDb(): HopeDatabase {
   return getHopeDb();
 }
 
@@ -37,19 +37,19 @@ async function ensurePermission(rightCode: string) {
   return auth.user?.fullName || auth.user?.email?.split('@')[0] || 'staff';
 }
 
-function logAudit(db: DatabaseSync, tableName: string, action: string, recordKey: string, oldValues: any, newValues: any, actionBy: string) {
+async function logAudit(db: HopeDatabase, tableName: string, action: string, recordKey: string, oldValues: any, newValues: any, actionBy: string) {
   try {
-    db.prepare(`
+    await db.run(`
       INSERT INTO audit_log (table_name, action, record_key, old_values, new_values, action_by)
       VALUES (?, ?, ?, ?, ?, ?)
-    `).run(
+    `, [
       tableName,
       action,
       recordKey,
       oldValues ? JSON.stringify(oldValues) : null,
       newValues ? JSON.stringify(newValues) : null,
       actionBy
-    );
+    ]);
   } catch {
     // Non-blocking
   }
@@ -127,6 +127,8 @@ export type SeparateEmployeeInput = {
  */
 export async function addEmployeeAction(input: AddEmployeeInput) {
   try {
+    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only demo mode to protect canonical data. Writes are available in local development." };
+
     const userName = await ensurePermission('add_employee');
     const validated = addEmployeeSchema.parse(input);
     const manilaToday = getManilaToday();
@@ -151,26 +153,26 @@ export async function addEmployeeAction(input: AddEmployeeInput) {
     const db = getSqliteDb();
 
     // Verify Job exists
-    const jobExists = db.prepare('SELECT 1 FROM JOB WHERE jobCode = ? AND is_deleted = 0').get(validated.jobCode);
+    const jobExists = await db.get('SELECT 1 FROM JOB WHERE jobCode = ? AND is_deleted = 0', [validated.jobCode]);
     if (!jobExists) return { error: `Job code "${validated.jobCode}" is not active or does not exist.` };
 
     // Verify Department exists
-    const deptExists = db.prepare('SELECT 1 FROM DEPARTMENT WHERE deptCode = ? AND is_deleted = 0').get(validated.deptCode);
+    const deptExists = await db.get('SELECT 1 FROM DEPARTMENT WHERE deptCode = ? AND is_deleted = 0', [validated.deptCode]);
     if (!deptExists) return { error: `Department code "${validated.deptCode}" is not active or does not exist.` };
 
-    db.exec('BEGIN IMMEDIATE');
+    await db.exec('BEGIN TRANSACTION');
     try {
-      const maxRow = db.prepare(`
+      const maxRow = await db.get<any>(`
         SELECT COALESCE(MAX(CAST(empNo AS INTEGER)), 0) + 2 AS nextNum FROM EMPLOYEE
-      `).get() as any;
+      `);
       const nextNum = Number(maxRow?.nextNum || 65);
       const nextEmpNo = String(nextNum).padStart(5, '0');
       const stampStr = getStampString('CREATED', userName);
 
-      db.prepare(`
+      await db.run(`
         INSERT INTO EMPLOYEE (empNo, lastName, firstName, gender, birthDate, hireDate, sepDate, is_deleted, stamp)
         VALUES (?, ?, ?, ?, ?, ?, NULL, 0, ?)
-      `).run(
+      `, [
         nextEmpNo,
         validated.lastName,
         validated.firstName,
@@ -178,21 +180,21 @@ export async function addEmployeeAction(input: AddEmployeeInput) {
         validated.birthDate,
         validated.hireDate,
         stampStr
-      );
+      ]);
 
-      db.prepare(`
+      await db.run(`
         INSERT INTO JOBHISTORY (empNo, jobCode, effDate, salary, deptCode, is_deleted, stamp)
         VALUES (?, ?, ?, ?, ?, 0, ?)
-      `).run(
+      `, [
         nextEmpNo,
         validated.jobCode,
         effDate,
         validated.salary,
         validated.deptCode,
         stampStr
-      );
+      ]);
 
-      logAudit(db, 'EMPLOYEE', 'ADD', nextEmpNo, null, {
+      await logAudit(db, 'EMPLOYEE', 'ADD', nextEmpNo, null, {
         empNo: nextEmpNo,
         lastName: validated.lastName,
         firstName: validated.firstName,
@@ -201,7 +203,7 @@ export async function addEmployeeAction(input: AddEmployeeInput) {
         hireDate: validated.hireDate,
       }, userName);
 
-      logAudit(db, 'JOBHISTORY', 'ADD', `${nextEmpNo}:${validated.jobCode}:${effDate}`, null, {
+      await logAudit(db, 'JOBHISTORY', 'ADD', `${nextEmpNo}:${validated.jobCode}:${effDate}`, null, {
         empNo: nextEmpNo,
         jobCode: validated.jobCode,
         effDate,
@@ -209,18 +211,18 @@ export async function addEmployeeAction(input: AddEmployeeInput) {
         deptCode: validated.deptCode,
       }, userName);
 
-      db.exec('COMMIT');
+      await db.exec('COMMIT');
       revalidatePath('/employees');
       return { success: true, empNo: nextEmpNo };
     } catch (dbErr: any) {
-      db.exec('ROLLBACK');
-      return { error: dbErr?.message || 'Database error creating employee.' };
+      await db.exec('ROLLBACK').catch(() => {});
+      return { error: sanitizeDbError(dbErr, 'Database error creating employee.') };
     }
   } catch (err: any) {
     if (err instanceof z.ZodError) {
       return { error: err.errors[0]?.message || 'Invalid employee details' };
     }
-    return { error: err?.message || 'Failed to add employee.' };
+    return { error: sanitizeDbError(err, 'Failed to add employee.') };
   }
 }
 
@@ -229,6 +231,8 @@ export async function addEmployeeAction(input: AddEmployeeInput) {
  */
 export async function updateEmployeeAction(input: UpdateEmployeeInput) {
   try {
+    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only demo mode to protect canonical data. Writes are available in local development." };
+
     const userName = await ensurePermission('edit_employee');
     const validated = updateEmployeeSchema.parse(input);
     const manilaToday = getManilaToday();
@@ -246,14 +250,14 @@ export async function updateEmployeeAction(input: UpdateEmployeeInput) {
 
     const cleanEmpNo = String(validated.empNo).trim().padStart(5, '0');
     const db = getSqliteDb();
-    const existing = db.prepare('SELECT * FROM EMPLOYEE WHERE empNo = ?').get(cleanEmpNo) as any;
+    const existing = await db.get<any>('SELECT * FROM EMPLOYEE WHERE empNo = ?', [cleanEmpNo]);
     if (!existing) return { error: `Employee ${cleanEmpNo} not found.` };
 
-    const earliestJh = db.prepare(`
+    const earliestJh = await db.get<any>(`
       SELECT MIN(effDate) AS earliestEffDate
       FROM JOBHISTORY
       WHERE empNo = ?
-    `).get(cleanEmpNo) as any;
+    `, [cleanEmpNo]);
 
     if (earliestJh?.earliestEffDate && validated.hireDate > earliestJh.earliestEffDate) {
       return { error: `Hire date cannot be later than earliest job history record (${earliestJh.earliestEffDate}).` };
@@ -262,7 +266,7 @@ export async function updateEmployeeAction(input: UpdateEmployeeInput) {
     const stampStr = getStampString('EDITED', userName);
     const sepVal = validated.sepDate && validated.sepDate.trim() !== '' ? validated.sepDate.trim() : null;
 
-    db.prepare(`
+    await db.run(`
       UPDATE EMPLOYEE
       SET lastName = ?,
           firstName = ?,
@@ -272,7 +276,7 @@ export async function updateEmployeeAction(input: UpdateEmployeeInput) {
           sepDate = ?,
           stamp = ?
       WHERE empNo = ?
-    `).run(
+    `, [
       validated.lastName,
       validated.firstName,
       validated.gender.toUpperCase(),
@@ -281,9 +285,9 @@ export async function updateEmployeeAction(input: UpdateEmployeeInput) {
       sepVal,
       stampStr,
       cleanEmpNo
-    );
+    ]);
 
-    logAudit(db, 'EMPLOYEE', 'EDIT', cleanEmpNo, {
+    await logAudit(db, 'EMPLOYEE', 'EDIT', cleanEmpNo, {
       lastName: existing.lastName,
       firstName: existing.firstName,
       gender: existing.gender,
@@ -305,7 +309,7 @@ export async function updateEmployeeAction(input: UpdateEmployeeInput) {
     if (err instanceof z.ZodError) {
       return { error: err.errors[0]?.message || 'Invalid employee details' };
     }
-    return { error: err?.message || 'Failed to update employee.' };
+    return { error: sanitizeDbError(err, 'Failed to update employee.') };
   }
 }
 
@@ -314,26 +318,28 @@ export async function updateEmployeeAction(input: UpdateEmployeeInput) {
  */
 export async function deleteEmployeeAction(empNo: string) {
   try {
+    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only demo mode to protect canonical data. Writes are available in local development." };
+
     const userName = await ensurePermission('delete_employee');
     const cleanEmpNo = String(empNo).trim().padStart(5, '0');
     const stampStr = getStampString('DELETED', userName);
 
     const db = getSqliteDb();
-    const existing = db.prepare('SELECT is_deleted, sepDate FROM EMPLOYEE WHERE empNo = ?').get(cleanEmpNo) as any;
+    const existing = await db.get<any>('SELECT is_deleted, sepDate FROM EMPLOYEE WHERE empNo = ?', [cleanEmpNo]);
     if (!existing) return { error: `Employee ${cleanEmpNo} not found.` };
 
-    db.prepare(`
+    await db.run(`
       UPDATE EMPLOYEE
       SET is_deleted = 1, stamp = ?
       WHERE empNo = ?
-    `).run(stampStr, cleanEmpNo);
+    `, [stampStr, cleanEmpNo]);
 
-    logAudit(db, 'EMPLOYEE', 'DELETE', cleanEmpNo, { is_deleted: 0 }, { is_deleted: 1 }, userName);
+    await logAudit(db, 'EMPLOYEE', 'DELETE', cleanEmpNo, { is_deleted: 0 }, { is_deleted: 1 }, userName);
 
     revalidatePath('/employees');
     return { success: true };
   } catch (err: any) {
-    return { error: err?.message || 'Failed to soft-delete employee.' };
+    return { error: sanitizeDbError(err, 'Failed to soft-delete employee.') };
   }
 }
 
@@ -342,26 +348,28 @@ export async function deleteEmployeeAction(empNo: string) {
  */
 export async function restoreEmployeeAction(empNo: string) {
   try {
+    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only demo mode to protect canonical data. Writes are available in local development." };
+
     const userName = await ensureAdmin();
     const cleanEmpNo = String(empNo).trim().padStart(5, '0');
     const stampStr = getStampString('RESTORED', userName);
 
     const db = getSqliteDb();
-    const existing = db.prepare('SELECT is_deleted FROM EMPLOYEE WHERE empNo = ?').get(cleanEmpNo) as any;
+    const existing = await db.get<any>('SELECT is_deleted FROM EMPLOYEE WHERE empNo = ?', [cleanEmpNo]);
     if (!existing) return { error: `Employee ${cleanEmpNo} not found.` };
 
-    db.prepare(`
+    await db.run(`
       UPDATE EMPLOYEE
       SET is_deleted = 0, stamp = ?
       WHERE empNo = ?
-    `).run(stampStr, cleanEmpNo);
+    `, [stampStr, cleanEmpNo]);
 
-    logAudit(db, 'EMPLOYEE', 'RESTORE', cleanEmpNo, { is_deleted: 1 }, { is_deleted: 0 }, userName);
+    await logAudit(db, 'EMPLOYEE', 'RESTORE', cleanEmpNo, { is_deleted: 1 }, { is_deleted: 0 }, userName);
 
     revalidatePath('/employees');
     return { success: true };
   } catch (err: any) {
-    return { error: err?.message || 'Failed to restore employee.' };
+    return { error: sanitizeDbError(err, 'Failed to restore employee.') };
   }
 }
 
@@ -374,6 +382,8 @@ export async function restoreEmployeeAction(empNo: string) {
  */
 export async function addJobAction(jobCode: string, jobDesc: string) {
   try {
+    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only demo mode to protect canonical data. Writes are available in local development." };
+
     const userName = await ensurePermission('add_job');
     const validated = jobSchema.parse({ jobCode, jobDesc });
     const code = validated.jobCode.toUpperCase();
@@ -381,30 +391,30 @@ export async function addJobAction(jobCode: string, jobDesc: string) {
     const stampStr = getStampString('CREATED', userName);
 
     const db = getSqliteDb();
-    const existing = db.prepare('SELECT jobCode, is_deleted FROM JOB WHERE jobCode = ?').get(code) as any;
+    const existing = await db.get<any>('SELECT jobCode, is_deleted FROM JOB WHERE jobCode = ?', [code]);
     if (existing) {
       if (existing.is_deleted === 1) {
         // If previously soft-deleted, reactivate
-        db.prepare('UPDATE JOB SET jobDesc = ?, is_deleted = 0, stamp = ? WHERE jobCode = ?').run(desc, stampStr, code);
-        logAudit(db, 'JOB', 'RESTORE', code, { is_deleted: 1 }, { is_deleted: 0, jobDesc: desc }, userName);
+        await db.run('UPDATE JOB SET jobDesc = ?, is_deleted = 0, stamp = ? WHERE jobCode = ?', [desc, stampStr, code]);
+        await logAudit(db, 'JOB', 'RESTORE', code, { is_deleted: 1 }, { is_deleted: 0, jobDesc: desc }, userName);
         revalidatePath('/employees');
         return { success: true };
       }
       return { error: `Job code "${code}" already exists.` };
     }
 
-    db.prepare(`
+    await db.run(`
       INSERT INTO JOB (jobCode, jobDesc, is_deleted, stamp)
       VALUES (?, ?, 0, ?)
-    `).run(code, desc, stampStr);
+    `, [code, desc, stampStr]);
 
-    logAudit(db, 'JOB', 'ADD', code, null, { jobCode: code, jobDesc: desc }, userName);
+    await logAudit(db, 'JOB', 'ADD', code, null, { jobCode: code, jobDesc: desc }, userName);
 
     revalidatePath('/employees');
     return { success: true };
   } catch (err: any) {
     if (err instanceof z.ZodError) return { error: err.errors[0]?.message };
-    return { error: err?.message || 'Failed to add job.' };
+    return { error: sanitizeDbError(err, 'Failed to add job.') };
   }
 }
 
@@ -413,6 +423,8 @@ export async function addJobAction(jobCode: string, jobDesc: string) {
  */
 export async function updateJobAction(jobCode: string, jobDesc: string) {
   try {
+    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only demo mode to protect canonical data. Writes are available in local development." };
+
     const userName = await ensurePermission('edit_job');
     const code = String(jobCode).trim().toUpperCase();
     const desc = String(jobDesc).trim();
@@ -422,17 +434,17 @@ export async function updateJobAction(jobCode: string, jobDesc: string) {
 
     const stampStr = getStampString('EDITED', userName);
     const db = getSqliteDb();
-    const existing = db.prepare('SELECT jobDesc FROM JOB WHERE jobCode = ?').get(code) as any;
+    const existing = await db.get<any>('SELECT jobDesc FROM JOB WHERE jobCode = ?', [code]);
     if (!existing) return { error: `Job ${code} not found.` };
 
-    db.prepare('UPDATE JOB SET jobDesc = ?, stamp = ? WHERE jobCode = ?').run(desc, stampStr, code);
+    await db.run('UPDATE JOB SET jobDesc = ?, stamp = ? WHERE jobCode = ?', [desc, stampStr, code]);
 
-    logAudit(db, 'JOB', 'EDIT', code, { jobDesc: existing.jobDesc }, { jobDesc: desc }, userName);
+    await logAudit(db, 'JOB', 'EDIT', code, { jobDesc: existing.jobDesc }, { jobDesc: desc }, userName);
 
     revalidatePath('/employees');
     return { success: true };
   } catch (err: any) {
-    return { error: err?.message || 'Failed to update job.' };
+    return { error: sanitizeDbError(err, 'Failed to update job.') };
   }
 }
 
@@ -441,22 +453,24 @@ export async function updateJobAction(jobCode: string, jobDesc: string) {
  */
 export async function deleteJobAction(jobCode: string) {
   try {
+    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only demo mode to protect canonical data. Writes are available in local development." };
+
     const userName = await ensurePermission('delete_job');
     const code = String(jobCode).trim().toUpperCase();
     const stampStr = getStampString('DELETED', userName);
 
     const db = getSqliteDb();
-    const existing = db.prepare('SELECT is_deleted FROM JOB WHERE jobCode = ?').get(code) as any;
+    const existing = await db.get<any>('SELECT is_deleted FROM JOB WHERE jobCode = ?', [code]);
     if (!existing) return { error: `Job ${code} not found.` };
 
-    db.prepare('UPDATE JOB SET is_deleted = 1, stamp = ? WHERE jobCode = ?').run(stampStr, code);
+    await db.run('UPDATE JOB SET is_deleted = 1, stamp = ? WHERE jobCode = ?', [stampStr, code]);
 
-    logAudit(db, 'JOB', 'DELETE', code, { is_deleted: 0 }, { is_deleted: 1 }, userName);
+    await logAudit(db, 'JOB', 'DELETE', code, { is_deleted: 0 }, { is_deleted: 1 }, userName);
 
     revalidatePath('/employees');
     return { success: true };
   } catch (err: any) {
-    return { error: err?.message || 'Failed to soft-delete job.' };
+    return { error: sanitizeDbError(err, 'Failed to soft-delete job.') };
   }
 }
 
@@ -465,22 +479,24 @@ export async function deleteJobAction(jobCode: string) {
  */
 export async function restoreJobAction(jobCode: string) {
   try {
+    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only demo mode to protect canonical data. Writes are available in local development." };
+
     const userName = await ensureAdmin();
     const code = String(jobCode).trim().toUpperCase();
     const stampStr = getStampString('RESTORED', userName);
 
     const db = getSqliteDb();
-    const existing = db.prepare('SELECT is_deleted FROM JOB WHERE jobCode = ?').get(code) as any;
+    const existing = await db.get<any>('SELECT is_deleted FROM JOB WHERE jobCode = ?', [code]);
     if (!existing) return { error: `Job ${code} not found.` };
 
-    db.prepare('UPDATE JOB SET is_deleted = 0, stamp = ? WHERE jobCode = ?').run(stampStr, code);
+    await db.run('UPDATE JOB SET is_deleted = 0, stamp = ? WHERE jobCode = ?', [stampStr, code]);
 
-    logAudit(db, 'JOB', 'RESTORE', code, { is_deleted: 1 }, { is_deleted: 0 }, userName);
+    await logAudit(db, 'JOB', 'RESTORE', code, { is_deleted: 1 }, { is_deleted: 0 }, userName);
 
     revalidatePath('/employees');
     return { success: true };
   } catch (err: any) {
-    return { error: err?.message || 'Failed to restore job.' };
+    return { error: sanitizeDbError(err, 'Failed to restore job.') };
   }
 }
 
@@ -493,6 +509,8 @@ export async function restoreJobAction(jobCode: string) {
  */
 export async function addDepartmentAction(deptCode: string, deptName: string) {
   try {
+    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only demo mode to protect canonical data. Writes are available in local development." };
+
     const userName = await ensurePermission('add_department');
     const validated = departmentSchema.parse({ deptCode, deptName });
     const code = validated.deptCode.toUpperCase();
@@ -500,29 +518,29 @@ export async function addDepartmentAction(deptCode: string, deptName: string) {
     const stampStr = getStampString('CREATED', userName);
 
     const db = getSqliteDb();
-    const existing = db.prepare('SELECT deptCode, is_deleted FROM DEPARTMENT WHERE deptCode = ?').get(code) as any;
+    const existing = await db.get<any>('SELECT deptCode, is_deleted FROM DEPARTMENT WHERE deptCode = ?', [code]);
     if (existing) {
       if (existing.is_deleted === 1) {
-        db.prepare('UPDATE DEPARTMENT SET deptName = ?, is_deleted = 0, stamp = ? WHERE deptCode = ?').run(name, stampStr, code);
-        logAudit(db, 'DEPARTMENT', 'RESTORE', code, { is_deleted: 1 }, { is_deleted: 0, deptName: name }, userName);
+        await db.run('UPDATE DEPARTMENT SET deptName = ?, is_deleted = 0, stamp = ? WHERE deptCode = ?', [name, stampStr, code]);
+        await logAudit(db, 'DEPARTMENT', 'RESTORE', code, { is_deleted: 1 }, { is_deleted: 0, deptName: name }, userName);
         revalidatePath('/employees');
         return { success: true };
       }
       return { error: `Department code "${code}" already exists.` };
     }
 
-    db.prepare(`
+    await db.run(`
       INSERT INTO DEPARTMENT (deptCode, deptName, is_deleted, stamp)
       VALUES (?, ?, 0, ?)
-    `).run(code, name, stampStr);
+    `, [code, name, stampStr]);
 
-    logAudit(db, 'DEPARTMENT', 'ADD', code, null, { deptCode: code, deptName: name }, userName);
+    await logAudit(db, 'DEPARTMENT', 'ADD', code, null, { deptCode: code, deptName: name }, userName);
 
     revalidatePath('/employees');
     return { success: true };
   } catch (err: any) {
     if (err instanceof z.ZodError) return { error: err.errors[0]?.message };
-    return { error: err?.message || 'Failed to add department.' };
+    return { error: sanitizeDbError(err, 'Failed to add department.') };
   }
 }
 
@@ -531,6 +549,8 @@ export async function addDepartmentAction(deptCode: string, deptName: string) {
  */
 export async function updateDepartmentAction(deptCode: string, deptName: string) {
   try {
+    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only demo mode to protect canonical data. Writes are available in local development." };
+
     const userName = await ensurePermission('edit_department');
     const code = String(deptCode).trim().toUpperCase();
     const name = String(deptName).trim();
@@ -540,17 +560,17 @@ export async function updateDepartmentAction(deptCode: string, deptName: string)
 
     const stampStr = getStampString('EDITED', userName);
     const db = getSqliteDb();
-    const existing = db.prepare('SELECT deptName FROM DEPARTMENT WHERE deptCode = ?').get(code) as any;
+    const existing = await db.get<any>('SELECT deptName FROM DEPARTMENT WHERE deptCode = ?', [code]);
     if (!existing) return { error: `Department ${code} not found.` };
 
-    db.prepare('UPDATE DEPARTMENT SET deptName = ?, stamp = ? WHERE deptCode = ?').run(name, stampStr, code);
+    await db.run('UPDATE DEPARTMENT SET deptName = ?, stamp = ? WHERE deptCode = ?', [name, stampStr, code]);
 
-    logAudit(db, 'DEPARTMENT', 'EDIT', code, { deptName: existing.deptName }, { deptName: name }, userName);
+    await logAudit(db, 'DEPARTMENT', 'EDIT', code, { deptName: existing.deptName }, { deptName: name }, userName);
 
     revalidatePath('/employees');
     return { success: true };
   } catch (err: any) {
-    return { error: err?.message || 'Failed to update department.' };
+    return { error: sanitizeDbError(err, 'Failed to update department.') };
   }
 }
 
@@ -559,22 +579,24 @@ export async function updateDepartmentAction(deptCode: string, deptName: string)
  */
 export async function deleteDepartmentAction(deptCode: string) {
   try {
+    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only demo mode to protect canonical data. Writes are available in local development." };
+
     const userName = await ensurePermission('delete_department');
     const code = String(deptCode).trim().toUpperCase();
     const stampStr = getStampString('DELETED', userName);
 
     const db = getSqliteDb();
-    const existing = db.prepare('SELECT is_deleted FROM DEPARTMENT WHERE deptCode = ?').get(code) as any;
+    const existing = await db.get<any>('SELECT is_deleted FROM DEPARTMENT WHERE deptCode = ?', [code]);
     if (!existing) return { error: `Department ${code} not found.` };
 
-    db.prepare('UPDATE DEPARTMENT SET is_deleted = 1, stamp = ? WHERE deptCode = ?').run(stampStr, code);
+    await db.run('UPDATE DEPARTMENT SET is_deleted = 1, stamp = ? WHERE deptCode = ?', [stampStr, code]);
 
-    logAudit(db, 'DEPARTMENT', 'DELETE', code, { is_deleted: 0 }, { is_deleted: 1 }, userName);
+    await logAudit(db, 'DEPARTMENT', 'DELETE', code, { is_deleted: 0 }, { is_deleted: 1 }, userName);
 
     revalidatePath('/employees');
     return { success: true };
   } catch (err: any) {
-    return { error: err?.message || 'Failed to soft-delete department.' };
+    return { error: sanitizeDbError(err, 'Failed to soft-delete department.') };
   }
 }
 
@@ -583,22 +605,24 @@ export async function deleteDepartmentAction(deptCode: string) {
  */
 export async function restoreDepartmentAction(deptCode: string) {
   try {
+    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only demo mode to protect canonical data. Writes are available in local development." };
+
     const userName = await ensureAdmin();
     const code = String(deptCode).trim().toUpperCase();
     const stampStr = getStampString('RESTORED', userName);
 
     const db = getSqliteDb();
-    const existing = db.prepare('SELECT is_deleted FROM DEPARTMENT WHERE deptCode = ?').get(code) as any;
+    const existing = await db.get<any>('SELECT is_deleted FROM DEPARTMENT WHERE deptCode = ?', [code]);
     if (!existing) return { error: `Department ${code} not found.` };
 
-    db.prepare('UPDATE DEPARTMENT SET is_deleted = 0, stamp = ? WHERE deptCode = ?').run(stampStr, code);
+    await db.run('UPDATE DEPARTMENT SET is_deleted = 0, stamp = ? WHERE deptCode = ?', [stampStr, code]);
 
-    logAudit(db, 'DEPARTMENT', 'RESTORE', code, { is_deleted: 1 }, { is_deleted: 0 }, userName);
+    await logAudit(db, 'DEPARTMENT', 'RESTORE', code, { is_deleted: 1 }, { is_deleted: 0 }, userName);
 
     revalidatePath('/employees');
     return { success: true };
   } catch (err: any) {
-    return { error: err?.message || 'Failed to restore department.' };
+    return { error: sanitizeDbError(err, 'Failed to restore department.') };
   }
 }
 
@@ -611,6 +635,8 @@ export async function restoreDepartmentAction(deptCode: string) {
  */
 export async function addJobHistoryAction(input: JobHistoryInput) {
   try {
+    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only demo mode to protect canonical data. Writes are available in local development." };
+
     const userName = await ensurePermission('add_job_history');
     const validated = jobHistorySchema.parse(input);
     const cleanEmpNo = String(validated.empNo).trim().padStart(5, '0');
@@ -620,7 +646,7 @@ export async function addJobHistoryAction(input: JobHistoryInput) {
 
     const db = getSqliteDb();
     // Verify employee
-    const emp = db.prepare('SELECT empNo, hireDate, sepDate FROM EMPLOYEE WHERE empNo = ?').get(cleanEmpNo) as any;
+    const emp = await db.get<any>('SELECT empNo, hireDate, sepDate FROM EMPLOYEE WHERE empNo = ?', [cleanEmpNo]);
     if (!emp) return { error: `Employee ${cleanEmpNo} not found.` };
     if (emp.sepDate != null && emp.sepDate !== '') {
       return { error: `Employee ${cleanEmpNo} is separated and cannot receive new job history records.` };
@@ -631,20 +657,20 @@ export async function addJobHistoryAction(input: JobHistoryInput) {
     }
 
     // Check composite primary key (empNo, jobCode, effDate)
-    const existing = db.prepare(`
+    const existing = await db.get<any>(`
       SELECT is_deleted FROM JOBHISTORY 
       WHERE empNo = ? AND jobCode = ? AND effDate = ?
-    `).get(cleanEmpNo, cleanJobCode, validated.effDate) as any;
+    `, [cleanEmpNo, cleanJobCode, validated.effDate]);
 
     if (existing) {
       if (existing.is_deleted === 1) {
-        db.prepare(`
+        await db.run(`
           UPDATE JOBHISTORY 
           SET salary = ?, deptCode = ?, is_deleted = 0, stamp = ?
           WHERE empNo = ? AND jobCode = ? AND effDate = ?
-        `).run(validated.salary, cleanDeptCode, stampStr, cleanEmpNo, cleanJobCode, validated.effDate);
+        `, [validated.salary, cleanDeptCode, stampStr, cleanEmpNo, cleanJobCode, validated.effDate]);
 
-        logAudit(db, 'JOBHISTORY', 'RESTORE', `${cleanEmpNo}:${cleanJobCode}:${validated.effDate}`, null, {
+        await logAudit(db, 'JOBHISTORY', 'RESTORE', `${cleanEmpNo}:${cleanJobCode}:${validated.effDate}`, null, {
           salary: validated.salary,
           deptCode: cleanDeptCode,
         }, userName);
@@ -655,12 +681,12 @@ export async function addJobHistoryAction(input: JobHistoryInput) {
       return { error: `A job history record for ${cleanJobCode} on ${validated.effDate} already exists for this employee.` };
     }
 
-    db.prepare(`
+    await db.run(`
       INSERT INTO JOBHISTORY (empNo, jobCode, effDate, salary, deptCode, is_deleted, stamp)
       VALUES (?, ?, ?, ?, ?, 0, ?)
-    `).run(cleanEmpNo, cleanJobCode, validated.effDate, validated.salary, cleanDeptCode, stampStr);
+    `, [cleanEmpNo, cleanJobCode, validated.effDate, validated.salary, cleanDeptCode, stampStr]);
 
-    logAudit(db, 'JOBHISTORY', 'ADD', `${cleanEmpNo}:${cleanJobCode}:${validated.effDate}`, null, {
+    await logAudit(db, 'JOBHISTORY', 'ADD', `${cleanEmpNo}:${cleanJobCode}:${validated.effDate}`, null, {
       empNo: cleanEmpNo,
       jobCode: cleanJobCode,
       effDate: validated.effDate,
@@ -672,7 +698,7 @@ export async function addJobHistoryAction(input: JobHistoryInput) {
     return { success: true };
   } catch (err: any) {
     if (err instanceof z.ZodError) return { error: err.errors[0]?.message };
-    return { error: err?.message || 'Failed to add job history record.' };
+    return { error: sanitizeDbError(err, 'Failed to add job history record.') };
   }
 }
 
@@ -700,22 +726,22 @@ export async function updateJobHistoryAction(input: {
     const stampStr = getStampString('EDITED', userName);
     const db = getSqliteDb();
 
-    const existing = db.prepare(`
+    const existing = await db.get<any>(`
       SELECT salary, deptCode FROM JOBHISTORY
       WHERE empNo = ? AND jobCode = ? AND effDate = ?
-    `).get(cleanEmpNo, cleanJobCode, cleanEffDate) as any;
+    `, [cleanEmpNo, cleanJobCode, cleanEffDate]);
 
     if (!existing) {
       return { error: 'Job history record not found.' };
     }
 
-    db.prepare(`
+    await db.run(`
       UPDATE JOBHISTORY
       SET salary = ?, deptCode = ?, stamp = ?
       WHERE empNo = ? AND jobCode = ? AND effDate = ?
-    `).run(input.salary, cleanDeptCode, stampStr, cleanEmpNo, cleanJobCode, cleanEffDate);
+    `, [input.salary, cleanDeptCode, stampStr, cleanEmpNo, cleanJobCode, cleanEffDate]);
 
-    logAudit(db, 'JOBHISTORY', 'EDIT', `${cleanEmpNo}:${cleanJobCode}:${cleanEffDate}`, {
+    await logAudit(db, 'JOBHISTORY', 'EDIT', `${cleanEmpNo}:${cleanJobCode}:${cleanEffDate}`, {
       salary: existing.salary,
       deptCode: existing.deptCode,
     }, {
@@ -726,7 +752,7 @@ export async function updateJobHistoryAction(input: {
     revalidatePath('/employees');
     return { success: true };
   } catch (err: any) {
-    return { error: err?.message || 'Failed to update job history record.' };
+    return { error: sanitizeDbError(err, 'Failed to update job history record.') };
   }
 }
 
@@ -735,6 +761,8 @@ export async function updateJobHistoryAction(input: {
  */
 export async function deleteJobHistoryAction(empNo: string, jobCode: string, effDate: string) {
   try {
+    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only demo mode to protect canonical data. Writes are available in local development." };
+
     const userName = await ensurePermission('delete_job_history');
     const cleanEmpNo = String(empNo).trim().padStart(5, '0');
     const cleanJobCode = String(jobCode).trim().toUpperCase();
@@ -742,25 +770,25 @@ export async function deleteJobHistoryAction(empNo: string, jobCode: string, eff
     const stampStr = getStampString('DELETED', userName);
 
     const db = getSqliteDb();
-    const existing = db.prepare(`
+    const existing = await db.get<any>(`
       SELECT is_deleted FROM JOBHISTORY
       WHERE empNo = ? AND jobCode = ? AND effDate = ?
-    `).get(cleanEmpNo, cleanJobCode, cleanEffDate) as any;
+    `, [cleanEmpNo, cleanJobCode, cleanEffDate]);
 
     if (!existing) return { error: 'Job history record not found.' };
 
-    db.prepare(`
+    await db.run(`
       UPDATE JOBHISTORY
       SET is_deleted = 1, stamp = ?
       WHERE empNo = ? AND jobCode = ? AND effDate = ?
-    `).run(stampStr, cleanEmpNo, cleanJobCode, cleanEffDate);
+    `, [stampStr, cleanEmpNo, cleanJobCode, cleanEffDate]);
 
-    logAudit(db, 'JOBHISTORY', 'DELETE', `${cleanEmpNo}:${cleanJobCode}:${cleanEffDate}`, { is_deleted: 0 }, { is_deleted: 1 }, userName);
+    await logAudit(db, 'JOBHISTORY', 'DELETE', `${cleanEmpNo}:${cleanJobCode}:${cleanEffDate}`, { is_deleted: 0 }, { is_deleted: 1 }, userName);
 
     revalidatePath('/employees');
     return { success: true };
   } catch (err: any) {
-    return { error: err?.message || 'Failed to soft-delete job history record.' };
+    return { error: sanitizeDbError(err, 'Failed to soft-delete job history record.') };
   }
 }
 
@@ -769,6 +797,8 @@ export async function deleteJobHistoryAction(empNo: string, jobCode: string, eff
  */
 export async function restoreJobHistoryAction(empNo: string, jobCode: string, effDate: string) {
   try {
+    if (isDatabaseReadOnly()) return { error: "This deployed environment is in read-only demo mode to protect canonical data. Writes are available in local development." };
+
     const userName = await ensureAdmin();
     const cleanEmpNo = String(empNo).trim().padStart(5, '0');
     const cleanJobCode = String(jobCode).trim().toUpperCase();
@@ -776,25 +806,25 @@ export async function restoreJobHistoryAction(empNo: string, jobCode: string, ef
     const stampStr = getStampString('RESTORED', userName);
 
     const db = getSqliteDb();
-    const existing = db.prepare(`
+    const existing = await db.get<any>(`
       SELECT is_deleted FROM JOBHISTORY
       WHERE empNo = ? AND jobCode = ? AND effDate = ?
-    `).get(cleanEmpNo, cleanJobCode, cleanEffDate) as any;
+    `, [cleanEmpNo, cleanJobCode, cleanEffDate]);
 
     if (!existing) return { error: 'Job history record not found.' };
 
-    db.prepare(`
+    await db.run(`
       UPDATE JOBHISTORY
       SET is_deleted = 0, stamp = ?
       WHERE empNo = ? AND jobCode = ? AND effDate = ?
-    `).run(stampStr, cleanEmpNo, cleanJobCode, cleanEffDate);
+    `, [stampStr, cleanEmpNo, cleanJobCode, cleanEffDate]);
 
-    logAudit(db, 'JOBHISTORY', 'RESTORE', `${cleanEmpNo}:${cleanJobCode}:${cleanEffDate}`, { is_deleted: 1 }, { is_deleted: 0 }, userName);
+    await logAudit(db, 'JOBHISTORY', 'RESTORE', `${cleanEmpNo}:${cleanJobCode}:${cleanEffDate}`, { is_deleted: 1 }, { is_deleted: 0 }, userName);
 
     revalidatePath('/employees');
     return { success: true };
   } catch (err: any) {
-    return { error: err?.message || 'Failed to restore job history record.' };
+    return { error: sanitizeDbError(err, 'Failed to restore job history record.') };
   }
 }
 
@@ -815,7 +845,7 @@ export async function addJobRecordAction(input: AddJobRecordInput) {
 export async function separateEmployeeAction(input: SeparateEmployeeInput) {
   const db = getSqliteDb();
   const cleanEmpNo = String(input.empNo).trim().padStart(5, '0');
-  const existing = db.prepare('SELECT * FROM EMPLOYEE WHERE empNo = ?').get(cleanEmpNo) as any;
+  const existing = await db.get<any>('SELECT * FROM EMPLOYEE WHERE empNo = ?', [cleanEmpNo]);
   if (!existing) return { error: `Employee ${cleanEmpNo} not found.` };
 
   return updateEmployeeAction({

@@ -13,6 +13,7 @@ import {
   Clock,
   ExternalLink,
   Users,
+  ShieldCheck,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { RightSideKpiPanel, type KpiCardItem } from '@/components/ui/RightSideKpiPanel';
@@ -147,18 +148,19 @@ export function PaymentsMainView({
       {/* Top Header Row with Title and Role Badge */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-4">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
+          <h1 className="font-editorial italic text-2xl sm:text-3xl font-normal text-text tracking-tight">
             Payments Management
           </h1>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Section 3.9 &bull; Track customer payments, official receipts, and balance reconciliation.
+          <p className="font-sans text-xs text-text-muted mt-1">
+            Section 3.9: Track customer payments, official receipts, and balance reconciliation.
           </p>
         </div>
 
         <div className="flex items-center gap-3">
-          <span className="text-[11px] font-mono font-bold uppercase tracking-wider px-2.5 py-1 rounded-md border bg-[#041a24]/10 text-[#041a24] border-[#041a24]/20 dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700">
-            {roleUpper}
-          </span>
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-mono font-semibold uppercase rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+            <ShieldCheck className="h-3.5 w-3.5 text-[#041a24] dark:text-slate-300" />
+            <span>{roleUpper}</span>
+          </div>
         </div>
       </div>
 
@@ -242,7 +244,7 @@ export function PaymentsMainView({
                 className="bg-[#001A2B] hover:bg-[#00263E] text-white shrink-0 text-xs px-3.5 py-1.5 font-medium rounded-md flex items-center gap-1.5 shadow-sm cursor-pointer transition-colors"
               >
                 <Plus className="h-3.5 w-3.5" />
-                <span>+ Record Payment</span>
+                <span>Record Payment</span>
               </button>
             </div>
           </div>

@@ -1,4 +1,4 @@
-import { getHopeDb, type DatabaseSync } from '@/lib/hope-db';
+import { getHopeDb, type HopeDatabase } from '@/lib/hope-db';
 
 // ========================================================================
 // TYPES & CONTRACTS
@@ -165,7 +165,7 @@ export function calculateTenureText(hireDateStr: string, sepDateStr?: string | n
   return 'Less than 1 month';
 }
 
-function getSqliteDb(): DatabaseSync {
+function getSqliteDb(): HopeDatabase {
   return getHopeDb();
 }
 
@@ -179,7 +179,7 @@ export async function getHumanResourcesPageData(
   const isAdmin = userRole.toLowerCase() === 'admin' || userRole.toLowerCase() === 'superadmin';
 
   // 1. Query all employees with derived current job assignment
-  const empRows = db.prepare(`
+  const empRows = await db.query(`
     SELECT 
       e.empNo, 
       e.lastName, 
@@ -248,7 +248,7 @@ export async function getHumanResourcesPageData(
       ) AS currentEffDate
     FROM EMPLOYEE e
     ORDER BY e.empNo ASC
-  `).all() as any[];
+  `);
 
   const employees: EmployeeItem[] = empRows.map((r) => {
     const isDeleted = Boolean(r.is_deleted === 1 || r.is_deleted === true || r.is_deleted === '1');
@@ -277,7 +277,7 @@ export async function getHumanResourcesPageData(
   });
 
   // 2. Query all Jobs
-  const jobRows = db.prepare(`
+  const jobRows = await db.query(`
     SELECT j.jobCode, j.jobDesc, j.is_deleted, j.stamp,
       (
         SELECT COUNT(DISTINCT jh.empNo)
@@ -297,7 +297,7 @@ export async function getHumanResourcesPageData(
       ) AS activeStaffCount
     FROM JOB j
     ORDER BY j.jobCode ASC
-  `).all() as any[];
+  `);
 
   const jobs: JobItem[] = jobRows.map((r) => {
     const isDeleted = Boolean(r.is_deleted === 1 || r.is_deleted === true || r.is_deleted === '1');
@@ -312,7 +312,7 @@ export async function getHumanResourcesPageData(
   });
 
   // 3. Query all Departments
-  const deptRows = db.prepare(`
+  const deptRows = await db.query(`
     SELECT d.deptCode, d.deptName, d.is_deleted, d.stamp,
       (
         SELECT COUNT(DISTINCT jh.empNo)
@@ -332,7 +332,7 @@ export async function getHumanResourcesPageData(
       ) AS activeStaffCount
     FROM DEPARTMENT d
     ORDER BY d.deptCode ASC
-  `).all() as any[];
+  `);
 
   const departments: DepartmentItem[] = deptRows.map((r) => {
     const isDeleted = Boolean(r.is_deleted === 1 || r.is_deleted === true || r.is_deleted === '1');
@@ -347,7 +347,7 @@ export async function getHumanResourcesPageData(
   });
 
   // 4. Query all Job History records
-  const jhRows = db.prepare(`
+  const jhRows = await db.query(`
     SELECT 
       jh.empNo, 
       jh.jobCode, 
@@ -362,7 +362,7 @@ export async function getHumanResourcesPageData(
     LEFT JOIN JOB j ON j.jobCode = jh.jobCode
     LEFT JOIN DEPARTMENT d ON d.deptCode = jh.deptCode
     ORDER BY jh.effDate DESC, jh.empNo ASC
-  `).all() as any[];
+  `);
 
   const jobHistory: JobHistoryRecord[] = jhRows.map((r) => {
     const isDeleted = Boolean(r.is_deleted === 1 || r.is_deleted === true || r.is_deleted === '1');
@@ -414,13 +414,13 @@ export async function getHumanResourcesPageData(
   // 6. Query recent audit records for HR entities
   let recentAudits: HumanResourcesAuditItem[] = [];
   try {
-    const auditRows = db.prepare(`
+    const auditRows = await db.query(`
       SELECT audit_id, table_name, action, record_key, old_values, new_values, action_by, action_at
       FROM audit_log
       WHERE table_name IN ('EMPLOYEE', 'JOB', 'DEPARTMENT', 'JOBHISTORY')
       ORDER BY audit_id DESC
       LIMIT 30
-    `).all() as any[];
+    `);
 
     recentAudits = auditRows.map((a) => ({
       auditId: Number(a.audit_id),
@@ -511,7 +511,7 @@ export async function getEmployeeDetailPageData(
   const rawStr = String(empNo).trim();
   const formattedEmpNo = rawStr.padStart(5, '0');
 
-  const empRow = db.prepare('SELECT * FROM EMPLOYEE WHERE empNo = ? OR empNo = ?').get(formattedEmpNo, rawStr) as any;
+  const empRow = await db.get<any>('SELECT * FROM EMPLOYEE WHERE empNo = ? OR empNo = ?', [formattedEmpNo, rawStr]);
   if (!empRow) return null;
 
   const hireDate = String(empRow.hireDate || '');
@@ -519,7 +519,7 @@ export async function getEmployeeDetailPageData(
   const genderRaw = String(empRow.gender || 'M').toUpperCase();
   const genderDisplay = genderRaw === 'M' ? 'Male' : genderRaw === 'F' ? 'Female' : genderRaw;
 
-  const rawHistory = db.prepare(`
+  const rawHistory = await db.query(`
     SELECT 
       jh.empNo,
       jh.jobCode,
@@ -533,7 +533,7 @@ export async function getEmployeeDetailPageData(
     LEFT JOIN DEPARTMENT d ON d.deptCode = jh.deptCode
     WHERE (jh.empNo = ? OR jh.empNo = ?) AND jh.is_deleted = 0
     ORDER BY jh.effDate DESC
-  `).all(formattedEmpNo, rawStr) as any[];
+  `, [formattedEmpNo, rawStr]);
 
   const todayStr = new Date().toISOString().slice(0, 10);
   let currentFound = false;
@@ -563,11 +563,11 @@ export async function getEmployeeDetailPageData(
     effDate: hireDate,
   };
 
-  const latestSale = db.prepare(`
+  const latestSale = await db.get<any>(`
     SELECT MAX(salesDate) AS latestSaleDate
     FROM SALES
     WHERE empNo = ? OR empNo = ?
-  `).get(formattedEmpNo, rawStr) as any;
+  `, [formattedEmpNo, rawStr]);
 
   return {
     employee: {
@@ -606,19 +606,19 @@ export async function getEmployeeDetailPageData(
 export async function getDepartmentsAndJobsLookups() {
   const db = getSqliteDb();
 
-  const departments = db.prepare(`
+  const departments = await db.query(`
     SELECT d.deptCode, d.deptName
     FROM DEPARTMENT d
     WHERE d.is_deleted = 0
     ORDER BY d.deptName ASC
-  `).all() as any[];
+  `);
 
-  const jobs = db.prepare(`
+  const jobs = await db.query(`
     SELECT j.jobCode, j.jobDesc
     FROM JOB j
     WHERE j.is_deleted = 0
     ORDER BY j.jobDesc ASC
-  `).all() as any[];
+  `);
 
   return {
     departments: departments.map((d) => ({
