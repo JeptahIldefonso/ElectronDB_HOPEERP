@@ -392,7 +392,7 @@ export default function LoginPage() {
                     name="firstName"
                     type="text"
                     required
-                    placeholder="Jerry"
+                    placeholder="Jeptah"
                     className="w-full h-9 px-3 bg-white dark:bg-surface-2 border border-black/15 dark:border-border focus:border-[#041a24] dark:focus:border-text rounded-[3px] text-xs text-[#041a24] dark:text-text placeholder-[#41555f]/60 dark:placeholder-text-muted/60 outline-none transition-all font-sans"
                   />
                 </div>
@@ -408,7 +408,7 @@ export default function LoginPage() {
                     name="lastName"
                     type="text"
                     required
-                    placeholder="Esperanza"
+                    placeholder="Ildefonso"
                     className="w-full h-9 px-3 bg-white dark:bg-surface-2 border border-black/15 dark:border-border focus:border-[#041a24] dark:focus:border-text rounded-[3px] text-xs text-[#041a24] dark:text-text placeholder-[#41555f]/60 dark:placeholder-text-muted/60 outline-none transition-all font-sans"
                   />
                 </div>
@@ -426,7 +426,7 @@ export default function LoginPage() {
                   name="email"
                   type="email"
                   required
-                  placeholder="jcesperanza@neu.edu.ph"
+                  placeholder="ildefonsojeptahashleyr@gmail.com"
                   className="w-full h-9 px-3 bg-white dark:bg-surface-2 border border-black/15 dark:border-border focus:border-[#041a24] dark:focus:border-text rounded-[3px] text-xs text-[#041a24] dark:text-text placeholder-[#41555f]/60 dark:placeholder-text-muted/60 outline-none transition-all font-sans"
                 />
               </div>
