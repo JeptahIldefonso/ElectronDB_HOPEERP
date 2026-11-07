@@ -137,80 +137,101 @@ export async function ensureAuthDb(): Promise<void> {
  * Finds user in USERS table (falls back to staff_accounts if migrating)
  */
 export async function findAccountByEmail(email: string): Promise<(UserAccount & { id?: number }) | undefined> {
-  await ensureAuthDb();
-  const db = getHopeDb();
-  
-  const user = await db.get<any>(`
-    SELECT userId, firstName, lastName, email, passwordHash, role, isBlocked, status, stamp, createdAt
-    FROM USERS
-    WHERE LOWER(email) = LOWER(?)
-  `, [email.trim()]);
+  try {
+    await ensureAuthDb();
+    const db = getHopeDb();
+    
+    const user = await db.get<any>(`
+      SELECT userId, firstName, lastName, email, passwordHash, role, isBlocked, status, stamp, createdAt
+      FROM USERS
+      WHERE LOWER(email) = LOWER(?)
+    `, [email.trim()]);
 
-  if (user) {
-    const rightsRows = await db.query<any>(`
-      SELECT rightCode FROM USERRIGHTS WHERE userId = ?
-    `, [user.userId]);
-    const rights = rightsRows.map((r) => r.rightCode);
+    if (user) {
+      let rights: string[] = [];
+      try {
+        const rightsRows = await db.query<any>(`
+          SELECT rightCode FROM USERRIGHTS WHERE userId = ?
+        `, [user.userId]);
+        rights = rightsRows.map((r) => r.rightCode);
+      } catch (rErr: any) {
+        console.warn('[auth-db] Rights lookup warning:', rErr?.message);
+      }
 
-    return {
-      userId: user.userId,
-      id: 1,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      fullName: `${user.firstName} ${user.lastName}`.trim(),
-      email: user.email,
-      passwordHash: user.passwordHash,
-      role: user.role,
-      isBlocked: Boolean(user.isBlocked),
-      status: user.status,
-      stamp: user.stamp,
-      createdAt: user.createdAt,
-      rights,
-    };
+      return {
+        userId: user.userId,
+        id: 1,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        fullName: `${user.firstName} ${user.lastName}`.trim(),
+        email: user.email,
+        passwordHash: user.passwordHash,
+        role: user.role,
+        isBlocked: Boolean(user.isBlocked),
+        status: user.status,
+        stamp: user.stamp,
+        createdAt: user.createdAt,
+        rights,
+      };
+    }
+
+    // Legacy staff_accounts lookup fallback
+    try {
+      const staff = await db.get<any>(`
+        SELECT id, email, passwordHash, fullName, role, createdAt
+        FROM staff_accounts
+        WHERE LOWER(email) = LOWER(?)
+      `, [email.trim()]);
+
+      if (staff) {
+        const roleMap: Record<string, 'Superadmin' | 'Admin' | 'User'> = {
+          admin: 'Admin',
+          sales: 'User',
+          cashier: 'User',
+        };
+        const mappedRole = roleMap[staff.role] || 'User';
+        const names = staff.fullName.split(' ');
+        return {
+          userId: `usr-${staff.id}`,
+          id: staff.id,
+          firstName: names[0] || 'Staff',
+          lastName: names.slice(1).join(' ') || 'Member',
+          fullName: staff.fullName,
+          email: staff.email,
+          passwordHash: staff.passwordHash,
+          role: mappedRole,
+          isBlocked: false,
+          status: 'Active',
+          stamp: 'CREATED system',
+          createdAt: staff.createdAt,
+          rights: ['add_customer', 'edit_customer', 'add_sale', 'view_sale_details'],
+        };
+      }
+    } catch {}
+
+    return undefined;
+  } catch (err: any) {
+    console.warn('[auth-db] findAccountByEmail warning:', err?.message);
+    return undefined;
   }
-
-  // Legacy staff_accounts lookup fallback
-  const staff = await db.get<any>(`
-    SELECT id, email, passwordHash, fullName, role, createdAt
-    FROM staff_accounts
-    WHERE LOWER(email) = LOWER(?)
-  `, [email.trim()]);
-
-  if (staff) {
-    const roleMap: Record<string, 'Superadmin' | 'Admin' | 'User'> = {
-      admin: 'Admin',
-      sales: 'User',
-      cashier: 'User',
-    };
-    const mappedRole = roleMap[staff.role] || 'User';
-    const names = staff.fullName.split(' ');
-    return {
-      userId: `usr-${staff.id}`,
-      id: staff.id,
-      firstName: names[0] || 'Staff',
-      lastName: names.slice(1).join(' ') || 'Member',
-      fullName: staff.fullName,
-      email: staff.email,
-      passwordHash: staff.passwordHash,
-      role: mappedRole,
-      isBlocked: false,
-      status: 'Active',
-      stamp: 'CREATED system',
-      createdAt: staff.createdAt,
-      rights: ['add_customer', 'edit_customer', 'add_sale', 'view_sale_details'],
-    };
-  }
-
-  return undefined;
 }
 
 export async function emailExists(email: string): Promise<boolean> {
-  await ensureAuthDb();
-  const db = getHopeDb();
-  const inUsers = await db.get('SELECT 1 FROM USERS WHERE LOWER(email) = LOWER(?)', [email.trim()]);
-  if (inUsers) return true;
-  const inStaff = await db.get('SELECT 1 FROM staff_accounts WHERE LOWER(email) = LOWER(?)', [email.trim()]);
-  return Boolean(inStaff);
+  try {
+    await ensureAuthDb();
+    const db = getHopeDb();
+    const inUsers = await db.get('SELECT 1 FROM USERS WHERE LOWER(email) = LOWER(?)', [email.trim()]);
+    if (inUsers) return true;
+    try {
+      const inStaff = await db.get('SELECT 1 FROM staff_accounts WHERE LOWER(email) = LOWER(?)', [email.trim()]);
+      return Boolean(inStaff);
+    } catch {
+      return false;
+    }
+  } catch (err: any) {
+    console.warn('[auth-db] emailExists warning:', err?.message);
+    return false;
+  }
 }
 
 export async function insertAccount(

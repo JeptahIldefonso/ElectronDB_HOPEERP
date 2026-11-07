@@ -6,10 +6,24 @@ export async function updateSession(request: NextRequest) {
     request,
   });
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co',
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key',
-    {
+  const isPublicStatic =
+    request.nextUrl.pathname.startsWith('/_next') ||
+    request.nextUrl.pathname.startsWith('/api') ||
+    request.nextUrl.pathname.includes('.');
+
+  if (isPublicStatic) {
+    return supabaseResponse;
+  }
+
+  try {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+    if (!supabaseUrl || !supabaseKey || supabaseUrl.includes('placeholder')) {
+      return supabaseResponse;
+    }
+
+    const supabase = createServerClient(supabaseUrl, supabaseKey, {
       cookies: {
         getAll() {
           return request.cookies.getAll();
@@ -24,32 +38,21 @@ export async function updateSession(request: NextRequest) {
           );
         },
       },
+    });
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    const isLoginPage = request.nextUrl.pathname === '/login';
+    if (user && isLoginPage) {
+      const url = request.nextUrl.clone();
+      url.pathname = '/';
+      return NextResponse.redirect(url);
     }
-  );
-
-  // IMPORTANT: Avoid using getSession() on server/middleware; use getUser()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  // Route protection
-  const isLoginPage = request.nextUrl.pathname === '/login';
-  const isPublicStatic = 
-    request.nextUrl.pathname.startsWith('/_next') ||
-    request.nextUrl.pathname.startsWith('/api') ||
-    request.nextUrl.pathname.includes('.');
-
-  // Allow static assets freely
-  if (isPublicStatic) {
-    return supabaseResponse;
+  } catch (err: any) {
+    console.warn('[middleware] Supabase session check error:', err?.message);
   }
 
-  // Redirect to home if logged in and visiting login page
-  if (user && isLoginPage) {
-    const url = request.nextUrl.clone();
-    url.pathname = '/';
-    return NextResponse.redirect(url);
-  }
-
-    return supabaseResponse;
+  return supabaseResponse;
 }

@@ -59,7 +59,13 @@ export function isDatabaseReadOnly(): boolean {
   if (isTursoConfigured()) {
     return false;
   }
-  return Boolean(process.env.VERCEL);
+  try {
+    const activePath = getHopeDbPath();
+    const masterPath = getMasterDbPath();
+    return activePath === masterPath;
+  } catch {
+    return true;
+  }
 }
 
 /**
@@ -93,18 +99,20 @@ export function getMasterDbPath(): string {
  *   protecting the committed master hope.db from any mutations.
  */
 export function getHopeDbPath(): string {
-  if (isDatabaseReadOnly()) {
+  if (isTursoConfigured()) {
     return getMasterDbPath();
   }
 
-  const workPath = path.join(process.cwd(), 'hope.work.db');
+  const workDir = process.env.VERCEL ? '/tmp' : process.cwd();
+  const workPath = path.join(workDir, 'hope.work.db');
+
   if (!fs.existsSync(workPath)) {
     const masterPath = getMasterDbPath();
     try {
       fs.copyFileSync(masterPath, workPath);
-      console.log('[hope-db] Initialized working copy at hope.work.db from master seed.');
+      console.log(`[hope-db] Initialized working copy at ${workPath} from master seed.`);
     } catch (err) {
-      console.error('[hope-db] Failed to create working copy at hope.work.db:', err);
+      console.error(`[hope-db] Failed to create working copy at ${workPath}:`, err);
       return masterPath;
     }
   }
