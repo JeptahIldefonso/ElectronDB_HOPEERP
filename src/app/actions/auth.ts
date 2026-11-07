@@ -406,16 +406,46 @@ export async function updateUserProfileAction(data: {
 }
 
 /**
- * Resets the Superadmin password after verifying the server-side recovery secret.
+ * Verifies email address for self-service password reset.
  */
-export async function resetSuperadminPasswordAction(formData: FormData): Promise<{ success: boolean; error?: string }> {
-  const email = String(formData.get('email') ?? '').trim().toLowerCase();
-  const recoveryKey = String(formData.get('recoveryKey') ?? '');
-  const newPassword = String(formData.get('newPassword') ?? '');
-  const confirmPassword = String(formData.get('confirmPassword') ?? '');
+export async function verifyEmailForResetAction(email: string): Promise<{
+  success: boolean;
+  fullName?: string;
+  role?: string;
+  error?: string;
+}> {
+  const cleanEmail = email?.trim().toLowerCase();
+  if (!cleanEmail) {
+    return { success: false, error: 'Please enter your email address.' };
+  }
 
-  if (!email || !recoveryKey || !newPassword || !confirmPassword) {
-    return { success: false, error: 'All fields are required.' };
+  await ensureAuthDb();
+  const account = await findAccountByEmail(cleanEmail);
+  if (!account) {
+    return { success: false, error: 'No registered account found with this email address.' };
+  }
+
+  if (account.isBlocked || account.status !== 'Active') {
+    return { success: false, error: 'This account has been deactivated or blocked by an administrator.' };
+  }
+
+  return {
+    success: true,
+    fullName: account.fullName,
+    role: account.role,
+  };
+}
+
+/**
+ * Resets the password directly for verified accounts and logs in immediately.
+ */
+export async function resetPasswordDirectAction(formData: FormData): Promise<{ success: boolean; error?: string }> {
+  const email = String(formData.get('email') ?? '').trim().toLowerCase();
+  const newPassword = String(formData.get('newPassword') ?? '').trim();
+  const confirmPassword = String(formData.get('confirmPassword') ?? '').trim();
+
+  if (!email || !newPassword || !confirmPassword) {
+    return { success: false, error: 'Email, new password, and confirmation are required.' };
   }
 
   if (newPassword.length < 8) {
@@ -426,27 +456,14 @@ export async function resetSuperadminPasswordAction(formData: FormData): Promise
     return { success: false, error: 'Passwords do not match.' };
   }
 
-  const configuredRecoveryKey = process.env.ADMIN_RECOVERY_KEY || process.env.AUTH_SECRET;
-  if (!configuredRecoveryKey?.trim()) {
-    return { success: false, error: 'Password recovery is not configured. Contact your system administrator.' };
-  }
-
-  const providedDigest = crypto.createHash('sha256').update(recoveryKey).digest();
-  const expectedDigest = crypto.createHash('sha256').update(configuredRecoveryKey.trim()).digest();
-  if (!crypto.timingSafeEqual(providedDigest, expectedDigest)) {
-    return { success: false, error: 'Invalid recovery key or server secret.' };
-  }
-
   await ensureAuthDb();
   const account = await findAccountByEmail(email);
-  if (!account || account.role !== 'Superadmin') {
-    return {
-      success: false,
-      error: 'Emergency reset is reserved for Superadmin accounts. Staff accounts are managed in User Management.',
-    };
+  if (!account) {
+    return { success: false, error: 'No registered account found with this email address.' };
   }
+
   if (account.isBlocked || account.status !== 'Active') {
-    return { success: false, error: 'This Superadmin account is inactive or blocked.' };
+    return { success: false, error: 'This account has been deactivated or blocked by an administrator.' };
   }
 
   const passwordHash = await hashPassword(newPassword);
@@ -474,3 +491,8 @@ export async function resetSuperadminPasswordAction(formData: FormData): Promise
 
   redirect('/');
 }
+
+/**
+ * Backward compatibility alias for password recovery.
+ */
+export const resetSuperadminPasswordAction = resetPasswordDirectAction;

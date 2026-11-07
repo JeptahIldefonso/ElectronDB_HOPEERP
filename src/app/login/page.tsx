@@ -2,6 +2,7 @@
 
 import React, { useState, useTransition, useEffect } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { Eye, EyeOff, Loader2, ArrowLeft } from 'lucide-react';
 import { loginAction, registerAction } from '@/app/actions/auth';
 import { TopographicCanvas } from '@/components/ambient/TopographicCanvas';
@@ -11,7 +12,6 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [showRegPassword, setShowRegPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   // Keep browser tab title synchronized with active authentication mode
@@ -86,33 +86,16 @@ export default function LoginPage() {
 
         {/* Artistic ElectronDB Brand Mark & Wordmark */}
         <div className="flex items-center gap-2.5">
-          <svg
-            viewBox="0 0 32 32"
-            className="w-8 h-8 text-[#041a25] shrink-0"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-            aria-label="ElectronDB Monogram"
-            role="img"
-          >
-            {/* Orbit ring & single electron dot */}
-            <g transform="rotate(-28 16 16)">
-              <ellipse
-                cx="16"
-                cy="16"
-                rx="13"
-                ry="5.5"
-                stroke="currentColor"
-                strokeWidth="1.25"
-                strokeOpacity="0.75"
-              />
-              <circle cx="29" cy="16" r="1.75" fill="currentColor" />
-            </g>
-            {/* Clean geometric E */}
-            <path
-              d="M11 9.5 H21 V12 H13.5 V14.75 H19.5 V17.25 H13.5 V20 H21 V22.5 H11 Z"
-              fill="currentColor"
+          <div className="relative w-8 h-8 shrink-0 rounded-md overflow-hidden border border-black/10 dark:border-white/10 shadow-2xs bg-white">
+            <Image
+              src="/logo.jpg"
+              alt="ElectronDB Logo"
+              fill
+              sizes="32px"
+              className="object-cover"
+              priority
             />
-          </svg>
+          </div>
           <div className="flex flex-col leading-none">
             <span className="font-editorial italic text-xl font-normal tracking-tight text-[#041a25]">
               ElectronDB
@@ -270,19 +253,6 @@ export default function LoginPage() {
                     {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                   </button>
                 </div>
-              </div>
-
-              <div className="flex items-center gap-2 pt-0.5">
-                <input
-                  id="remember-me"
-                  type="checkbox"
-                  checked={rememberMe}
-                  onChange={(e) => setRememberMe(e.target.checked)}
-                  className="w-3.5 h-3.5 rounded border-black/20 text-[#041a24] accent-[#041a24] focus:ring-0 cursor-pointer"
-                />
-                <label htmlFor="remember-me" className="text-xs text-[#41555f] dark:text-text-muted cursor-pointer select-none">
-                  Remember me
-                </label>
               </div>
 
               <button

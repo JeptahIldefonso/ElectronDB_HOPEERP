@@ -105,14 +105,26 @@ export function Sidebar({
           <Link
             href="/"
             onClick={closeMobileSidebar}
-            className="group block select-none"
+            className="group flex items-center gap-3 select-none"
             aria-label="ElectronDB Monitoring HOPEERP"
           >
-            <div className="font-editorial italic text-[25px] font-normal tracking-tight text-text group-hover:text-accent transition-colors leading-none">
-              ElectronDB
+            <div className="relative w-9 h-9 shrink-0 rounded-md overflow-hidden border border-black/10 dark:border-white/10 shadow-2xs bg-white">
+              <Image
+                src="/logo.jpg"
+                alt="ElectronDB Logo"
+                fill
+                sizes="36px"
+                className="object-cover"
+                priority
+              />
             </div>
-            <div className="font-mono text-[10px] tracking-widest text-text-muted uppercase mt-1">
-              MONITORING &bull; HOPEERP
+            <div>
+              <div className="font-editorial italic text-[22px] font-normal tracking-tight text-text group-hover:text-accent transition-colors leading-none">
+                ElectronDB
+              </div>
+              <div className="font-mono text-[9px] tracking-widest text-text-muted uppercase mt-1">
+                MONITORING &bull; HOPEERP
+              </div>
             </div>
           </Link>
 

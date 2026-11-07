@@ -155,11 +155,10 @@ Separated in `auth.db` to protect `hope.db`'s 10-table canonical schema:
   - Notice box: *"New accounts are created as User. Superadmin and Admin roles can only be assigned by existing administrators."*
   - Automatically assigns role `User`.
 * **Login Form (Figure 4):**
-  - Inputs: Email address, Password, "Remember me" checkbox, "Forgot password?" link.
+  - Inputs: Email address, Password, "Reset password" link.
 
-* **Superadmin Password Recovery (`/reset-password`, Figure 5):**
-  - Requires the Superadmin email and the server-configured recovery key (`ADMIN_RECOVERY_KEY`, or `AUTH_SECRET` as a fallback).
-  - Staff password resets are handled by administrators in User Management.
+* **Password Recovery (`/reset-password`, Figure 5):**
+  - Enter registered email to verify account, then proceed to set new password directly.
 
 ---
 

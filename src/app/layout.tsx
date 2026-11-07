@@ -29,7 +29,11 @@ export const metadata: Metadata = {
   },
   description: `${BRAND.name} PC parts sales and payments monitoring system.`,
   icons: {
-    icon: '/favicon.ico',
+    icon: [
+      { url: '/icon.jpg' },
+      { url: '/logo.jpg' },
+    ],
+    apple: [{ url: '/icon.jpg' }],
   },
 };
 
