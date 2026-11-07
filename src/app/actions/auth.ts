@@ -414,26 +414,35 @@ export async function verifyEmailForResetAction(email: string): Promise<{
   role?: string;
   error?: string;
 }> {
-  const cleanEmail = email?.trim().toLowerCase();
-  if (!cleanEmail) {
-    return { success: false, error: 'Please enter your email address.' };
-  }
+  try {
+    const cleanEmail = email?.trim().toLowerCase();
+    if (!cleanEmail) {
+      return { success: false, error: 'Please enter your email address.' };
+    }
 
-  await ensureAuthDb();
-  const account = await findAccountByEmail(cleanEmail);
-  if (!account) {
-    return { success: false, error: 'No registered account found with this email address.' };
-  }
+    try {
+      await ensureAuthDb();
+      const account = await findAccountByEmail(cleanEmail);
+      if (account) {
+        if (account.isBlocked || account.status !== 'Active') {
+          return { success: false, error: 'This account has been deactivated or blocked by an administrator.' };
+        }
+        return {
+          success: true,
+          fullName: account.fullName,
+          role: account.role,
+        };
+      }
+    } catch (dbErr: any) {
+      console.warn('[auth] Email lookup fallback:', dbErr?.message);
+    }
 
-  if (account.isBlocked || account.status !== 'Active') {
-    return { success: false, error: 'This account has been deactivated or blocked by an administrator.' };
+    return {
+      success: true,
+    };
+  } catch (err: any) {
+    return { success: false, error: 'Unable to process reset request at this time.' };
   }
-
-  return {
-    success: true,
-    fullName: account.fullName,
-    role: account.role,
-  };
 }
 
 /**

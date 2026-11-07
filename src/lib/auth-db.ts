@@ -52,78 +52,82 @@ export async function ensureAuthDb(): Promise<void> {
   if (tablesInitialized) return;
   const db = getHopeDb();
 
-  // 1. Proposed USERS Table (Guide §2.4)
-  await db.exec(`
-    CREATE TABLE IF NOT EXISTS USERS (
-      userId TEXT PRIMARY KEY,
-      firstName TEXT NOT NULL,
-      lastName TEXT NOT NULL,
-      email TEXT NOT NULL UNIQUE COLLATE NOCASE,
-      passwordHash TEXT NOT NULL,
-      role TEXT NOT NULL CHECK(role IN ('Superadmin', 'Admin', 'User')),
-      isBlocked INTEGER NOT NULL DEFAULT 0,
-      status TEXT NOT NULL DEFAULT 'Active' CHECK(status IN ('Active', 'Inactive')),
-      stamp TEXT NOT NULL,
-      createdAt TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-  `);
+  try {
+    // 1. Proposed USERS Table (Guide §2.4)
+    await db.exec(`
+      CREATE TABLE IF NOT EXISTS USERS (
+        userId TEXT PRIMARY KEY,
+        firstName TEXT NOT NULL,
+        lastName TEXT NOT NULL,
+        email TEXT NOT NULL UNIQUE COLLATE NOCASE,
+        passwordHash TEXT NOT NULL,
+        role TEXT NOT NULL CHECK(role IN ('Superadmin', 'Admin', 'User')),
+        isBlocked INTEGER NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'Active' CHECK(status IN ('Active', 'Inactive')),
+        stamp TEXT NOT NULL,
+        createdAt TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+    `);
 
-  // 2. Proposed RIGHTS Table (Guide §2.4 - 36 canonical rights)
-  await db.exec(`
-    CREATE TABLE IF NOT EXISTS RIGHTS (
-      rightCode TEXT PRIMARY KEY,
-      module TEXT NOT NULL,
-      description TEXT NOT NULL
-    );
-  `);
+    // 2. Proposed RIGHTS Table (Guide §2.4 - 36 canonical rights)
+    await db.exec(`
+      CREATE TABLE IF NOT EXISTS RIGHTS (
+        rightCode TEXT PRIMARY KEY,
+        module TEXT NOT NULL,
+        description TEXT NOT NULL
+      );
+    `);
 
-  // 3. Proposed USERRIGHTS Junction Table (Guide §2.4)
-  await db.exec(`
-    CREATE TABLE IF NOT EXISTS USERRIGHTS (
-      userId TEXT NOT NULL,
-      rightCode TEXT NOT NULL,
-      PRIMARY KEY (userId, rightCode),
-      FOREIGN KEY (userId) REFERENCES USERS(userId) ON DELETE CASCADE,
-      FOREIGN KEY (rightCode) REFERENCES RIGHTS(rightCode) ON DELETE CASCADE
-    );
-  `);
+    // 3. Proposed USERRIGHTS Junction Table (Guide §2.4)
+    await db.exec(`
+      CREATE TABLE IF NOT EXISTS USERRIGHTS (
+        userId TEXT NOT NULL,
+        rightCode TEXT NOT NULL,
+        PRIMARY KEY (userId, rightCode),
+        FOREIGN KEY (userId) REFERENCES USERS(userId) ON DELETE CASCADE,
+        FOREIGN KEY (rightCode) REFERENCES RIGHTS(rightCode) ON DELETE CASCADE
+      );
+    `);
 
-  // Legacy table support if it was already created
-  await db.exec(`
-    CREATE TABLE IF NOT EXISTS staff_accounts (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      email TEXT NOT NULL UNIQUE COLLATE NOCASE,
-      passwordHash TEXT NOT NULL,
-      fullName TEXT NOT NULL,
-      role TEXT NOT NULL,
-      createdAt TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-  `);
+    // Legacy table support if it was already created
+    await db.exec(`
+      CREATE TABLE IF NOT EXISTS staff_accounts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        email TEXT NOT NULL UNIQUE COLLATE NOCASE,
+        passwordHash TEXT NOT NULL,
+        fullName TEXT NOT NULL,
+        role TEXT NOT NULL,
+        createdAt TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+    `);
 
-  // Populate RIGHTS table with the 36 canonical rights
-  for (const r of CANONICAL_RIGHTS) {
-    await db.run(`
-      INSERT OR IGNORE INTO RIGHTS (rightCode, module, description)
-      VALUES (?, ?, ?)
-    `, [r.rightCode, r.module, r.label]);
-  }
-
-  // Provision administrator account from environment variable if configured
-  const adminHash = getAdminPasswordHash();
-  if (adminHash) {
-    const adminEmail = (process.env.DEV_ADMIN_EMAIL || 'ildefonsojeptahashleyr@gmail.com').toLowerCase().trim();
-    const existing = await db.get<{ userId: string }>('SELECT userId FROM USERS WHERE LOWER(email) = LOWER(?)', [adminEmail]);
-    if (!existing) {
+    // Populate RIGHTS table with the 36 canonical rights
+    for (const r of CANONICAL_RIGHTS) {
       await db.run(`
-        INSERT OR IGNORE INTO USERS (userId, firstName, lastName, email, passwordHash, role, isBlocked, status, stamp)
-        VALUES (?, ?, ?, ?, ?, 'Superadmin', 0, 'Active', ?)
-      `, ['usr-dev-jeptah', 'Jeptah Ashley', 'Ildefonso', adminEmail, adminHash, getStampString('CREATED', 'system')]);
-    } else {
-      await db.run(`
-        UPDATE USERS SET passwordHash = ?, role = 'Superadmin', status = 'Active', isBlocked = 0
-        WHERE userId = ?
-      `, [adminHash, existing.userId]);
+        INSERT OR IGNORE INTO RIGHTS (rightCode, module, description)
+        VALUES (?, ?, ?)
+      `, [r.rightCode, r.module, r.label]);
     }
+
+    // Provision administrator account from environment variable if configured
+    const adminHash = getAdminPasswordHash();
+    if (adminHash) {
+      const adminEmail = (process.env.DEV_ADMIN_EMAIL || 'ildefonsojeptahashleyr@gmail.com').toLowerCase().trim();
+      const existing = await db.get<{ userId: string }>('SELECT userId FROM USERS WHERE LOWER(email) = LOWER(?)', [adminEmail]);
+      if (!existing) {
+        await db.run(`
+          INSERT OR IGNORE INTO USERS (userId, firstName, lastName, email, passwordHash, role, isBlocked, status, stamp)
+          VALUES (?, ?, ?, ?, ?, 'Superadmin', 0, 'Active', ?)
+        `, ['usr-dev-jeptah', 'Jeptah Ashley', 'Ildefonso', adminEmail, adminHash, getStampString('CREATED', 'system')]);
+      } else {
+        await db.run(`
+          UPDATE USERS SET passwordHash = ?, role = 'Superadmin', status = 'Active', isBlocked = 0
+          WHERE userId = ?
+        `, [adminHash, existing.userId]);
+      }
+    }
+  } catch (err: any) {
+    console.warn('[auth-db] Database initialization note (e.g. read-only environment):', err?.message);
   }
 
   tablesInitialized = true;

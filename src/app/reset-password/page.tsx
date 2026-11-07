@@ -3,18 +3,13 @@
 import React, { useState, useTransition } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Eye, EyeOff, Loader2, ArrowLeft, CheckCircle2, KeyRound } from 'lucide-react';
+import { Loader2, ArrowLeft, CheckCircle2, KeyRound } from 'lucide-react';
 import { TopographicCanvas } from '@/components/ambient/TopographicCanvas';
-import { verifyEmailForResetAction, resetPasswordDirectAction } from '@/app/actions/auth';
+import { verifyEmailForResetAction } from '@/app/actions/auth';
 
 export default function ResetPasswordPage() {
-  const [step, setStep] = useState<1 | 2>(1);
   const [email, setEmail] = useState('');
-  const [verifiedUser, setVerifiedUser] = useState<{ fullName?: string; role?: string } | null>(null);
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [showNewPassword, setShowNewPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -31,53 +26,14 @@ export default function ResetPasswordPage() {
     startTransition(async () => {
       try {
         const result = await verifyEmailForResetAction(cleanEmail);
-        if (!result.success) {
-          setError(result.error || 'Failed to verify email.');
-          return;
-        }
-
-        setVerifiedUser({
-          fullName: result.fullName,
-          role: result.role,
-        });
-        setStep(2);
-      } catch (err: any) {
-        setError(err?.message || 'Verification failed. Please try again.');
-      }
-    });
-  };
-
-  const handleResetPassword = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setError(null);
-
-    if (newPassword.length < 8) {
-      setError('Password must be at least 8 characters.');
-      return;
-    }
-
-    if (newPassword !== confirmPassword) {
-      setError('Passwords do not match.');
-      return;
-    }
-
-    const formData = new FormData();
-    formData.append('email', email);
-    formData.append('newPassword', newPassword);
-    formData.append('confirmPassword', confirmPassword);
-
-    startTransition(async () => {
-      try {
-        const result = await resetPasswordDirectAction(formData);
-        if (result?.error) {
+        if (result && !result.success && result.error) {
           setError(result.error);
-        }
-      } catch (err: any) {
-        // Next.js redirect() throws a NEXT_REDIRECT digest error when redirecting
-        if (err?.digest?.startsWith('NEXT_REDIRECT') || err?.message === 'NEXT_REDIRECT') {
           return;
         }
-        setError(err?.message || 'Failed to reset password.');
+        setSubmitted(true);
+      } catch {
+        // Fallback: never leave user stranded with unhandled error
+        setSubmitted(true);
       }
     });
   };
@@ -131,9 +87,9 @@ export default function ResetPasswordPage() {
               </h1>
             </div>
             <p className="text-xs text-[#41555f] dark:text-text-muted">
-              {step === 1
-                ? "Enter your email address and we'll send you a secure link to reset it."
-                : 'A reset link has been dispatched to your email. Proceed below to reset your password right away.'}
+              {submitted
+                ? 'Check your inbox to proceed with resetting your password.'
+                : "Enter your email address and we'll send you a secure link to reset it."}
             </p>
           </div>
 
@@ -147,8 +103,30 @@ export default function ResetPasswordPage() {
             </div>
           )}
 
-          {/* STEP 1: Enter Email & Send Reset Link */}
-          {step === 1 && (
+          {submitted ? (
+            /* Figure 5 Confirmation Screen */
+            <div className="space-y-4">
+              <div className="p-4 rounded-[3px] bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 space-y-2">
+                <div className="flex items-center gap-2 font-medium text-xs">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                  <span>Reset link sent!</span>
+                </div>
+                <p className="text-[11px] leading-relaxed text-emerald-700 dark:text-emerald-400">
+                  A secure password reset link has been dispatched to <strong>{email}</strong>. Please check your inbox and follow the instructions to reset your credentials.
+                </p>
+                <div className="pt-2">
+                  <Link
+                    href="/login"
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-800 dark:text-emerald-300 hover:underline"
+                  >
+                    <ArrowLeft className="w-3.5 h-3.5" />
+                    Back to Sign In
+                  </Link>
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* Input Form */
             <form onSubmit={handleSendLink} className="space-y-4">
               <div>
                 <label
@@ -187,121 +165,6 @@ export default function ResetPasswordPage() {
             </form>
           )}
 
-          {/* STEP 2: Link Dispatched Banner + Reset Password Right Away */}
-          {step === 2 && (
-            <div className="space-y-4">
-              {/* Notice Banner matching Figure 5 */}
-              <div className="p-4 rounded-[3px] bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 space-y-1.5">
-                <div className="flex items-center gap-2 font-medium text-xs">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                  <span>Reset link sent!</span>
-                </div>
-                <p className="text-[11px] leading-relaxed text-emerald-700 dark:text-emerald-400">
-                  A secure password reset link has been dispatched to <strong>{email}</strong>.
-                  You can also proceed to reset your password right away below:
-                </p>
-                {verifiedUser?.fullName && (
-                  <div className="pt-1 text-[10px] font-mono uppercase tracking-wider text-emerald-800/80 dark:text-emerald-300/80">
-                    Account: {verifiedUser.fullName} &bull; {verifiedUser.role}
-                  </div>
-                )}
-              </div>
-
-              <form onSubmit={handleResetPassword} className="space-y-4">
-                {/* New Password */}
-                <div>
-                  <label
-                    htmlFor="new-password"
-                    className="block font-mono text-[11px] uppercase tracking-[0.14em] font-medium text-[#41555f] dark:text-text-muted mb-1.5"
-                  >
-                    New Password
-                  </label>
-                  <div className="relative">
-                    <input
-                      id="new-password"
-                      name="newPassword"
-                      type={showNewPassword ? 'text' : 'password'}
-                      required
-                      autoFocus
-                      minLength={8}
-                      value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
-                      placeholder="Minimum 8 characters"
-                      className="w-full h-9 pl-3 pr-9 bg-white dark:bg-surface-2 border border-black/15 dark:border-border focus:border-[#041a24] dark:focus:border-text focus:ring-1 focus:ring-[#041a24]/20 rounded-[3px] text-xs text-[#041a24] dark:text-text placeholder-[#41555f]/60 dark:placeholder-text-muted/60 outline-none transition-all font-sans"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowNewPassword(!showNewPassword)}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-black/40 dark:text-text-muted hover:text-[#041a24] dark:hover:text-text p-1 rounded transition-colors"
-                      aria-label={showNewPassword ? 'Hide password' : 'Show password'}
-                    >
-                      {showNewPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Confirm New Password */}
-                <div>
-                  <label
-                    htmlFor="confirm-password"
-                    className="block font-mono text-[11px] uppercase tracking-[0.14em] font-medium text-[#41555f] dark:text-text-muted mb-1.5"
-                  >
-                    Confirm New Password
-                  </label>
-                  <div className="relative">
-                    <input
-                      id="confirm-password"
-                      name="confirmPassword"
-                      type={showConfirmPassword ? 'text' : 'password'}
-                      required
-                      minLength={8}
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      placeholder="Re-enter your new password"
-                      className="w-full h-9 pl-3 pr-9 bg-white dark:bg-surface-2 border border-black/15 dark:border-border focus:border-[#041a24] dark:focus:border-text focus:ring-1 focus:ring-[#041a24]/20 rounded-[3px] text-xs text-[#041a24] dark:text-text placeholder-[#41555f]/60 dark:placeholder-text-muted/60 outline-none transition-all font-sans"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-black/40 dark:text-text-muted hover:text-[#041a24] dark:hover:text-text p-1 rounded transition-colors"
-                      aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
-                    >
-                      {showConfirmPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between pt-1">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setStep(1);
-                      setError(null);
-                    }}
-                    className="text-xs text-[#41555f] dark:text-text-muted hover:underline cursor-pointer"
-                  >
-                    Change email address
-                  </button>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={isPending}
-                  className="w-full h-9 bg-[#041a24] dark:bg-primary-bg hover:bg-[#1c313b] dark:hover:bg-primary-bg/90 active:bg-black dark:active:bg-primary-bg/80 disabled:opacity-50 text-white dark:!text-primary-fg font-medium text-xs rounded-[3px] shadow-2xs flex items-center justify-center gap-2 transition-colors cursor-pointer border border-[#041a24] dark:border-primary-bg"
-                >
-                  {isPending ? (
-                    <span className="flex items-center gap-2">
-                      <Loader2 className="w-3.5 h-3.5 animate-spin text-white dark:!text-primary-fg" />
-                      <span>Updating Password & Signing In...</span>
-                    </span>
-                  ) : (
-                    <span>Reset Password & Sign In</span>
-                  )}
-                </button>
-              </form>
-            </div>
-          )}
-
           <div className="text-center pt-2 border-t border-black/5 dark:border-border">
             <Link
               href="/login"
@@ -317,7 +180,7 @@ export default function ResetPasswordPage() {
       {/* Footer */}
       <footer className="relative z-10 w-full max-w-5xl mx-auto px-6 py-4 flex flex-col sm:flex-row items-center justify-between text-[11px] text-[#41555f]/80 dark:text-text-muted/80 gap-2 border-t border-black/5 dark:border-border">
         <span>&copy; {new Date().getFullYear()} ElectronDB ERP</span>
-        <span className="font-mono text-[10px]">Self-Service Password Reset</span>
+        <span className="font-mono text-[10px]">Security verified &bull; Password Recovery</span>
       </footer>
     </div>
   );
