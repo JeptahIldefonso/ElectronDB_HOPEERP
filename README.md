@@ -99,13 +99,11 @@ npm run dev
 
 Visit [http://localhost:3000](http://localhost:3000) in your browser. You will be redirected to `/` or `/login`.
 
-### Demo Login Credentials & Account Registration
-On the `/login` screen, you can sign in directly or register a new staff account:
-- 👑 **Executive Administrator** (`admin@hope.demo` / Password: `demo`): Full access including employee records, compensation details, and organization configuration.
-- 💼 **Sales Representative** (`sales@hope.demo` / Password: `demo`): Invoicing, customer account management, and product catalog access.
-- 💳 **Billing Cashier** (`cashier@hope.demo` / Password: `demo`): Payment receipt validation, Official Receipts issuance, and payment records access.
-
-> **Secure Local Account Storage:** Newly registered staff accounts are securely hashed using **bcrypt (10 salt rounds)** and stored permanently in an isolated local database (`auth.db`), preserving the strict 10-table canonical schema of `hope.db`.
+### User Authentication & Account Provisioning
+On the `/login` screen, staff authenticate with their email address and password, or register a new account:
+- **Self-Registration**: New accounts register via the Register tab with a minimum 8-character password. Newly registered accounts receive the baseline `User` role per Student Guide §3.1.
+- **Administrator Accounts**: The initial Superadmin account is provisioned via the `DEV_ADMIN_PASSWORD_HASH` environment variable. Role assignments and permission grants are managed by administrators via the System User Management module.
+- **Session Security**: Sessions are secured with an `httpOnly` cryptographically signed token (`HMAC-SHA256`), and user status is verified against the database on every request.
 
 ---
 

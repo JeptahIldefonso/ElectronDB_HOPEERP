@@ -159,7 +159,7 @@ async function main() {
     console.log(`  ✓ Inserted ${String(rows.length).padStart(4)} rows -> ${t.name}`);
   }
 
-  console.log('\n[4/5] Initializing Auth schema & demo accounts in Turso...');
+  console.log('\n[4/5] Initializing Auth schema & administrator account in Turso...');
 
   // Create USERS, RIGHTS, USERRIGHTS
   await turso.execute(`
@@ -242,37 +242,33 @@ async function main() {
     });
   }
 
-  // Precomputed salted bcrypt hashes
-  const HASH_DEMO = '$2b$10$uD1Nx8kdhqM4wL0PHA4f2.8v2SFuT5cYRDTqDcvWQJPDe8vorujOe'; // 'demo'
-  const HASH_DEV = '$2b$10$gEd44NE4L.9y2tmLcVQsw.O4wZmRSyZ4zbfba9i6fjsCb9oEzCqGq';
-
-  const defaultUsers = [
-    ['usr-superadmin', 'Michael', 'Superadmin', 'superadmin@hope.com', HASH_DEMO, 'Superadmin', 'CREATED system'],
-    ['usr-admin', 'Lisa', 'Park', 'admin@hope.com', HASH_DEMO, 'Admin', 'CREATED system'],
-    ['usr-manager', 'David', 'Kim', 'manager@hope.com', HASH_DEMO, 'Admin', 'CREATED system'],
-    ['usr-user', 'Alex', 'Rivera', 'user@hope.com', HASH_DEMO, 'User', 'CREATED system'],
-    ['usr-dev-jeptah', 'Jeptah Ashley', 'Ildefonso', 'ildefonsojeptahashleyr@gmail.com', HASH_DEV, 'Superadmin', 'CREATED system'],
-  ];
-
-  for (const u of defaultUsers) {
-    await turso.execute({
-      sql: 'INSERT OR IGNORE INTO USERS (userId, firstName, lastName, email, passwordHash, role, isBlocked, status, stamp) VALUES (?, ?, ?, ?, ?, ?, 0, "Active", ?)',
-      args: u,
-    });
+  // Provision initial administrator account from environment variable if provided
+  const rawAdminHash = process.env.DEV_ADMIN_PASSWORD_HASH?.trim();
+  let adminHash = rawAdminHash;
+  if (rawAdminHash?.startsWith('base64:')) {
+    try {
+      adminHash = Buffer.from(rawAdminHash.slice(7), 'base64').toString('utf8').trim();
+    } catch {
+      adminHash = undefined;
+    }
+  } else if (rawAdminHash && !rawAdminHash.startsWith('$2')) {
+    try {
+      const decoded = Buffer.from(rawAdminHash, 'base64').toString('utf8').trim();
+      if (decoded.startsWith('$2')) adminHash = decoded;
+    } catch {
+      // Not base64
+    }
   }
 
-  const userRights = [
-    'add_customer', 'edit_customer',
-    'add_product', 'edit_product',
-    'view_sale_details', 'edit_sale_detail',
-    'report_top_customers', 'report_product_master', 'report_top_products',
-  ];
-
-  for (const rc of userRights) {
+  if (adminHash) {
+    const adminEmail = (process.env.DEV_ADMIN_EMAIL || 'ildefonsojeptahashleyr@gmail.com').toLowerCase().trim();
     await turso.execute({
-      sql: 'INSERT OR IGNORE INTO USERRIGHTS (userId, rightCode) VALUES (?, ?)',
-      args: ['usr-user', rc],
+      sql: 'INSERT OR IGNORE INTO USERS (userId, firstName, lastName, email, passwordHash, role, isBlocked, status, stamp) VALUES (?, ?, ?, ?, ?, "Superadmin", 0, "Active", ?)',
+      args: ['usr-dev-jeptah', 'Jeptah Ashley', 'Ildefonso', adminEmail, adminHash, 'CREATED system'],
     });
+    console.log('  ✓ Initialized Superadmin account from environment');
+  } else {
+    console.log('  ℹ No DEV_ADMIN_PASSWORD_HASH configured; skipping initial admin seed');
   }
 
   console.log('\n[5/5] Running Parity & KPI Assertions...');

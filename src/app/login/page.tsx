@@ -3,7 +3,7 @@
 import React, { useState, useTransition, useEffect } from 'react';
 import Link from 'next/link';
 import { Eye, EyeOff, Loader2, ArrowLeft } from 'lucide-react';
-import { loginAction, registerAction, demoLoginAction } from '@/app/actions/auth';
+import { loginAction, registerAction } from '@/app/actions/auth';
 import { TopographicCanvas } from '@/components/ambient/TopographicCanvas';
 
 export default function LoginPage() {
@@ -68,15 +68,7 @@ export default function LoginPage() {
     });
   };
 
-  const handleQuickDemo = (role: 'Superadmin' | 'Admin' | 'User') => {
-    setError(null);
-    startTransition(async () => {
-      const res = await demoLoginAction(role);
-      if (res?.error) {
-        setError(res.error);
-      }
-    });
-  };
+
 
   return (
     <div className="relative min-h-screen flex flex-col justify-between bg-[#F4F4F0] text-[#041a24] selection:bg-[#041a24] selection:text-white overflow-x-hidden font-sans transition-colors duration-150">
@@ -151,41 +143,6 @@ export default function LoginPage() {
           {mode === 'register' && (
             <div className="rounded-[4px] bg-[#FFFBEB] dark:bg-[#78350F]/20 border border-[#FDE68A] dark:border-[#92400E]/40 p-2.5 text-[11px] text-[#92400E] dark:text-[#FDE68A] leading-relaxed">
               New accounts are created as <strong>User</strong>. Superadmin and Admin roles can only be assigned by existing administrators.
-            </div>
-          )}
-
-          {/* Demo Accounts Notice in Login mode */}
-          {mode === 'signin' && (
-            <div className="rounded-[4px] bg-[#041a24]/5 dark:bg-surface-2 border border-[#041a24]/15 dark:border-border p-3 text-[11px] text-[#041a24] dark:text-text space-y-2">
-              <div className="font-mono text-[10.5px] uppercase tracking-[0.14em] font-semibold text-[#041a24] dark:text-text">
-                Demo accounts (one-click sign in):
-              </div>
-              <div className="grid grid-cols-3 gap-1.5 pt-0.5">
-                <button
-                  type="button"
-                  onClick={() => handleQuickDemo('Superadmin')}
-                  disabled={isPending}
-                  className="py-1 px-1.5 bg-white dark:bg-surface-1 border border-[#041a24]/20 dark:border-border hover:bg-[#041a24]/5 dark:hover:bg-surface-3 text-[10px] font-mono uppercase tracking-wider font-semibold text-[#041a24] dark:text-text rounded text-center transition-colors shadow-2xs cursor-pointer"
-                >
-                  Superadmin
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleQuickDemo('Admin')}
-                  disabled={isPending}
-                  className="py-1 px-1.5 bg-white dark:bg-surface-1 border border-[#041a24]/20 dark:border-border hover:bg-[#041a24]/5 dark:hover:bg-surface-3 text-[10px] font-mono uppercase tracking-wider font-semibold text-[#041a24] dark:text-text rounded text-center transition-colors shadow-2xs cursor-pointer"
-                >
-                  Admin
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleQuickDemo('User')}
-                  disabled={isPending}
-                  className="py-1 px-1.5 bg-white dark:bg-surface-1 border border-[#041a24]/20 dark:border-border hover:bg-[#041a24]/5 dark:hover:bg-surface-3 text-[10px] font-mono uppercase tracking-wider font-semibold text-[#041a24] dark:text-text rounded text-center transition-colors shadow-2xs cursor-pointer"
-                >
-                  User (Staff)
-                </button>
-              </div>
             </div>
           )}
 
@@ -275,7 +232,6 @@ export default function LoginPage() {
                   name="email"
                   type="email"
                   required
-                  defaultValue="admin@hope.com"
                   placeholder="name@hope.com"
                   className="w-full h-9 px-3 bg-white dark:bg-surface-2 border border-black/15 dark:border-border focus:border-[#041a24] dark:focus:border-text focus:ring-1 focus:ring-[#041a24]/20 rounded-[3px] text-xs text-[#041a24] dark:text-text placeholder-[#41555f]/60 dark:placeholder-text-muted/60 outline-none transition-all font-sans"
                 />
@@ -302,7 +258,6 @@ export default function LoginPage() {
                     name="password"
                     type={showPassword ? 'text' : 'password'}
                     required
-                    defaultValue="demo"
                     placeholder="Enter your password"
                     className="w-full h-9 pl-3 pr-9 bg-white dark:bg-surface-2 border border-black/15 dark:border-border focus:border-[#041a24] dark:focus:border-text focus:ring-1 focus:ring-[#041a24]/20 rounded-[3px] text-xs text-[#041a24] dark:text-text placeholder-[#41555f]/60 dark:placeholder-text-muted/60 outline-none transition-all font-sans"
                   />
@@ -345,23 +300,7 @@ export default function LoginPage() {
                 )}
               </button>
 
-              <div className="relative my-3 text-center">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-black/10 dark:border-border" />
-                </div>
-                <span className="relative bg-white dark:bg-surface-1 px-2 text-[10px] text-[#41555f] dark:text-text-muted uppercase tracking-wider font-mono">
-                  or
-                </span>
-              </div>
 
-              <button
-                type="button"
-                onClick={() => handleQuickDemo('User')}
-                className="w-full h-9 bg-white dark:bg-surface-2 hover:bg-neutral-50 dark:hover:bg-surface-3 border border-black/15 dark:border-border text-[#041a24] dark:text-text font-medium text-xs rounded-[3px] flex items-center justify-center gap-2 transition-colors cursor-pointer"
-              >
-                <span className="font-bold text-[#EA4335] text-sm leading-none">G</span>
-                <span>Continue with Google</span>
-              </button>
 
               <div className="text-center pt-1 text-xs text-[#41555f] dark:text-text-muted font-sans">
                 Don&apos;t have an account?{' '}
@@ -447,7 +386,7 @@ export default function LoginPage() {
                     name="password"
                     type={showRegPassword ? 'text' : 'password'}
                     required
-                    minLength={4}
+                    minLength={8}
                     placeholder="••••••••••••"
                     className="w-full h-9 pl-3 pr-9 bg-white dark:bg-surface-2 border border-black/15 dark:border-border focus:border-[#041a24] dark:focus:border-text rounded-[3px] text-xs text-[#041a24] dark:text-text placeholder-[#41555f]/60 dark:placeholder-text-muted/60 outline-none transition-all font-sans"
                   />
@@ -477,23 +416,7 @@ export default function LoginPage() {
                 )}
               </button>
 
-              <div className="relative my-3 text-center">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-black/10 dark:border-border" />
-                </div>
-                <span className="relative bg-white dark:bg-surface-1 px-2 text-[10px] text-[#41555f] dark:text-text-muted uppercase tracking-wider font-mono">
-                  or
-                </span>
-              </div>
 
-              <button
-                type="button"
-                onClick={() => handleQuickDemo('User')}
-                className="w-full h-9 bg-white dark:bg-surface-2 hover:bg-neutral-50 dark:hover:bg-surface-3 border border-black/15 dark:border-border text-[#041a24] dark:text-text font-medium text-xs rounded-[3px] flex items-center justify-center gap-2 transition-colors cursor-pointer"
-              >
-                <span className="font-bold text-[#EA4335] text-sm leading-none">G</span>
-                <span>Continue with Google</span>
-              </button>
 
               <div className="text-center pt-1 text-xs text-[#41555f] dark:text-text-muted font-sans">
                 Already have an account?{' '}

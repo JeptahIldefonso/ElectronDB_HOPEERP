@@ -21,23 +21,19 @@ import { RightSideKpiPanel, type KpiCardItem } from '@/components/ui/RightSideKp
 import dynamic from 'next/dynamic';
 import { SalesSearchInput } from './SalesSearchInput';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const NewSaleModal = dynamic<any>(
+const NewSaleModal = dynamic(
   () => import('./NewSaleModal').then((m) => m.NewSaleModal),
   { ssr: false }
 );
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const EditSaleModal = dynamic<any>(
+const EditSaleModal = dynamic(
   () => import('./EditSaleModal').then((m) => m.EditSaleModal),
   { ssr: false }
 );
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const SaleDetailsModal = dynamic<any>(
+const SaleDetailsModal = dynamic(
   () => import('./SaleDetailsModal').then((m) => m.SaleDetailsModal),
   { ssr: false }
 );
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const SalesAuditModal = dynamic<any>(
+const SalesAuditModal = dynamic(
   () => import('./SalesAuditModal').then((m) => m.SalesAuditModal),
   { ssr: false }
 );

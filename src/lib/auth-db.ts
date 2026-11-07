@@ -14,10 +14,40 @@ function getStampString(action: 'CREATED' | 'EDITED' | 'DELETED' | 'RESTORED' | 
 
 /**
  * Initializes USERS, RIGHTS, USERRIGHTS tables (Student Guide §2.4)
- * and seeds canonical demo accounts & 36 rights into the unified database.
+ * and provisions initial administrator credentials from environment variables.
  * 
  * Works identically across local SQLite (hope.work.db) and production Turso cloud libSQL.
  */
+/**
+ * Safely parses DEV_ADMIN_PASSWORD_HASH from environment variables.
+ * Supports:
+ * - base64:<string> or standard base64 (bypasses Next.js $ variable expansion in .env files)
+ * - Raw bcrypt strings ($2a$, $2b$, $2y$)
+ */
+export function getAdminPasswordHash(): string | undefined {
+  const raw = process.env.DEV_ADMIN_PASSWORD_HASH?.trim();
+  if (!raw) return undefined;
+  if (raw.startsWith('base64:')) {
+    try {
+      return Buffer.from(raw.slice(7), 'base64').toString('utf8').trim();
+    } catch {
+      return undefined;
+    }
+  }
+  if (raw.startsWith('$2')) {
+    return raw;
+  }
+  try {
+    const decoded = Buffer.from(raw, 'base64').toString('utf8').trim();
+    if (decoded.startsWith('$2')) {
+      return decoded;
+    }
+  } catch {
+    // Not base64
+  }
+  return raw;
+}
+
 export async function ensureAuthDb(): Promise<void> {
   if (tablesInitialized) return;
   const db = getHopeDb();
@@ -78,84 +108,22 @@ export async function ensureAuthDb(): Promise<void> {
     `, [r.rightCode, r.module, r.label]);
   }
 
-  // Precomputed salted bcrypt hashes (never plaintext passwords in source code)
-  // 'demo' -> $2b$10$uD1Nx8kdhqM4wL0PHA4f2.8v2SFuT5cYRDTqDcvWQJPDe8vorujOe
-  // developer pass -> $2b$10$gEd44NE4L.9y2tmLcVQsw.O4wZmRSyZ4zbfba9i6fjsCb9oEzCqGq
-  const HASH_DEMO = '$2b$10$uD1Nx8kdhqM4wL0PHA4f2.8v2SFuT5cYRDTqDcvWQJPDe8vorujOe';
-  const HASH_DEV = '$2b$10$gEd44NE4L.9y2tmLcVQsw.O4wZmRSyZ4zbfba9i6fjsCb9oEzCqGq';
-
-  // Seed Default Accounts matching Student Guide & preserving developer credentials
-  const defaultAccounts = [
-    {
-      userId: 'usr-superadmin',
-      firstName: 'Michael',
-      lastName: 'Superadmin',
-      email: 'superadmin@hope.com',
-      role: 'Superadmin' as const,
-      passwordHash: HASH_DEMO,
-      stamp: getStampString('CREATED', 'system'),
-    },
-    {
-      userId: 'usr-admin',
-      firstName: 'Lisa',
-      lastName: 'Park',
-      email: 'admin@hope.com',
-      role: 'Admin' as const,
-      passwordHash: HASH_DEMO,
-      stamp: getStampString('CREATED', 'system'),
-    },
-    {
-      userId: 'usr-manager',
-      firstName: 'David',
-      lastName: 'Kim',
-      email: 'manager@hope.com',
-      role: 'Admin' as const,
-      passwordHash: HASH_DEMO,
-      stamp: getStampString('CREATED', 'system'),
-    },
-    {
-      userId: 'usr-user',
-      firstName: 'Alex',
-      lastName: 'Rivera',
-      email: 'user@hope.com',
-      role: 'User' as const,
-      passwordHash: HASH_DEMO,
-      stamp: getStampString('CREATED', 'system'),
-    },
-    {
-      userId: 'usr-dev-jeptah',
-      firstName: 'Jeptah Ashley',
-      lastName: 'Ildefonso',
-      email: 'ildefonsojeptahashleyr@gmail.com',
-      role: 'Superadmin' as const,
-      passwordHash: HASH_DEV,
-      stamp: getStampString('CREATED', 'system'),
-    },
-  ];
-
-  for (const acc of defaultAccounts) {
-    const existing = await db.get('SELECT userId FROM USERS WHERE LOWER(email) = LOWER(?)', [acc.email]);
+  // Provision administrator account from environment variable if configured
+  const adminHash = getAdminPasswordHash();
+  if (adminHash) {
+    const adminEmail = (process.env.DEV_ADMIN_EMAIL || 'ildefonsojeptahashleyr@gmail.com').toLowerCase().trim();
+    const existing = await db.get<{ userId: string }>('SELECT userId FROM USERS WHERE LOWER(email) = LOWER(?)', [adminEmail]);
     if (!existing) {
       await db.run(`
         INSERT OR IGNORE INTO USERS (userId, firstName, lastName, email, passwordHash, role, isBlocked, status, stamp)
-        VALUES (?, ?, ?, ?, ?, ?, 0, 'Active', ?)
-      `, [acc.userId, acc.firstName, acc.lastName, acc.email.toLowerCase(), acc.passwordHash, acc.role, acc.stamp]);
+        VALUES (?, ?, ?, ?, ?, 'Superadmin', 0, 'Active', ?)
+      `, ['usr-dev-jeptah', 'Jeptah Ashley', 'Ildefonso', adminEmail, adminHash, getStampString('CREATED', 'system')]);
+    } else {
+      await db.run(`
+        UPDATE USERS SET passwordHash = ?, role = 'Superadmin', status = 'Active', isBlocked = 0
+        WHERE userId = ?
+      `, [adminHash, existing.userId]);
     }
-  }
-
-  // Seed default rights for Alex Rivera ('user@hope.com') matching the guide figures (Figures 37-40)
-  const defaultUserRights = [
-    'add_customer', 'edit_customer',
-    'add_product', 'edit_product',
-    'view_sale_details', 'edit_sale_detail',
-    'report_top_customers', 'report_product_master', 'report_top_products',
-  ];
-
-  for (const rc of defaultUserRights) {
-    await db.run(`
-      INSERT OR IGNORE INTO USERRIGHTS (userId, rightCode)
-      VALUES (?, ?)
-    `, ['usr-user', rc]);
   }
 
   tablesInitialized = true;

@@ -4,6 +4,7 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { cache } from 'react';
+import crypto from 'node:crypto';
 import { createClient } from '@/lib/supabase/server';
 import type { UserRole, UserSession, UserAccount } from '@/lib/types';
 import {
@@ -23,25 +24,79 @@ import {
 /**
  * Retrieves the current session (from session cookie or Supabase Auth).
  */
-export const getCurrentUser = cache(async function getCurrentUser(): Promise<UserSession | null> {
-  const cookieStore = await cookies();
-  const demoRole = cookieStore.get('hope_demo_role')?.value as UserRole | undefined;
-  const demoEmail = cookieStore.get('hope_demo_email')?.value;
-  const demoName = cookieStore.get('hope_demo_name')?.value;
 
-  if (demoRole && demoEmail) {
-    const account = await findAccountByEmail(demoEmail);
-    if (account?.isBlocked) {
+const SESSION_COOKIE_NAME = 'hope_session';
+const SESSION_MAX_AGE = 86400 * 7; // 7 days
+
+interface SessionPayload {
+  userId: string;
+  email: string;
+  exp: number;
+}
+
+function getSessionSecret(): string | null {
+  const secret = process.env.AUTH_SECRET || process.env.SESSION_SECRET;
+  if (!secret || secret.trim().length === 0) {
+    return null;
+  }
+  return secret.trim();
+}
+
+function signSession(payload: SessionPayload): string {
+  const secret = getSessionSecret();
+  if (!secret) {
+    throw new Error('Authentication failure: AUTH_SECRET or SESSION_SECRET must be configured in environment variables.');
+  }
+  const encodedPayload = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const signature = crypto.createHmac('sha256', secret).update(encodedPayload).digest('base64url');
+  return `${encodedPayload}.${signature}`;
+}
+
+function verifySession(token: string): SessionPayload | null {
+  try {
+    const secret = getSessionSecret();
+    if (!secret) return null; // Fail-closed: cannot verify without configured secret
+
+    const parts = token.split('.');
+    if (parts.length !== 2) return null;
+    const [encodedPayload, signature] = parts;
+    const expectedSig = crypto.createHmac('sha256', secret).update(encodedPayload).digest('base64url');
+    const sigBuf = Buffer.from(signature);
+    const expBuf = Buffer.from(expectedSig);
+    if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
       return null;
     }
-    return {
-      id: account?.userId || (account ? `staff-${account.id}` : 'demo-user-id'),
-      email: demoEmail,
-      role: account ? account.role : demoRole,
-      fullName: account ? account.fullName : demoName || 'Staff Member',
-      isBlocked: account?.isBlocked,
-      rights: account?.rights || [],
-    };
+    const payload = JSON.parse(Buffer.from(encodedPayload, 'base64url').toString('utf8')) as SessionPayload;
+    if (!payload.userId || !payload.exp || typeof payload.exp !== 'number' || Date.now() > payload.exp) {
+      return null; // Expired or malformed
+    }
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+export const getCurrentUser = cache(async function getCurrentUser(): Promise<UserSession | null> {
+  const cookieStore = await cookies();
+  const sessionToken = cookieStore.get(SESSION_COOKIE_NAME)?.value;
+
+  if (sessionToken) {
+    const session = verifySession(sessionToken);
+    if (session) {
+      await ensureAuthDb();
+      const account = await findAccountByEmail(session.email);
+      if (account && !account.isBlocked && account.status === 'Active') {
+        return {
+          id: account.userId,
+          email: account.email,
+          role: account.role,
+          fullName: account.fullName,
+          isBlocked: account.isBlocked,
+          rights: account.rights || [],
+        };
+      }
+    }
+    return null;
   }
 
   // Fallback to Supabase Auth if session cookies are absent
@@ -97,43 +152,22 @@ export async function loginAction(formData: FormData) {
       return { error: 'Invalid email or password.' };
     }
 
-    // 3. Establish authenticated session cookie
+    // 3. Establish cryptographically signed session cookie
+    const sessionToken = signSession({
+      userId: account.userId,
+      email: account.email,
+      exp: Date.now() + SESSION_MAX_AGE * 1000,
+    });
+
     const cookieStore = await cookies();
-    cookieStore.set('hope_demo_role', account.role, {
+    cookieStore.set(SESSION_COOKIE_NAME, sessionToken, {
       path: '/',
       httpOnly: true,
-      maxAge: 86400 * 7,
-      sameSite: 'lax',
-    });
-    cookieStore.set('hope_demo_email', account.email, {
-      path: '/',
-      httpOnly: true,
-      maxAge: 86400 * 7,
-      sameSite: 'lax',
-    });
-    cookieStore.set('hope_demo_name', account.fullName, {
-      path: '/',
-      httpOnly: true,
-      maxAge: 86400 * 7,
+      secure: process.env.NODE_ENV === 'production',
+      maxAge: SESSION_MAX_AGE,
       sameSite: 'lax',
     });
 
-    redirect('/');
-  }
-
-  // Fallback demo accounts if running prototype mode
-  const demoFallback: Record<string, { role: UserRole; name: string }> = {
-    'superadmin@hope.com': { role: 'Superadmin', name: 'Michael Superadmin' },
-    'admin@hope.com': { role: 'Admin', name: 'Lisa Park' },
-    'user@hope.com': { role: 'User', name: 'Alex Rivera' },
-  };
-
-  if (demoFallback[email]) {
-    const info = demoFallback[email];
-    const cookieStore = await cookies();
-    cookieStore.set('hope_demo_role', info.role, { path: '/', httpOnly: true, maxAge: 86400 * 7, sameSite: 'lax' });
-    cookieStore.set('hope_demo_email', email, { path: '/', httpOnly: true, maxAge: 86400 * 7, sameSite: 'lax' });
-    cookieStore.set('hope_demo_name', info.name, { path: '/', httpOnly: true, maxAge: 86400 * 7, sameSite: 'lax' });
     redirect('/');
   }
 
@@ -157,8 +191,8 @@ export async function registerAction(formData: FormData) {
     return { error: 'Please provide full name, email address, and password.' };
   }
 
-  if (password.length < 4) {
-    return { error: 'Password must be at least 4 characters.' };
+  if (password.length < 8) {
+    return { error: 'Password must be at least 8 characters.' };
   }
 
   await ensureAuthDb();
@@ -178,65 +212,28 @@ export async function registerAction(formData: FormData) {
     return { error: err?.message || 'Failed to save account to database.' };
   }
 
-  // 4. Establish authenticated session immediately
+  // 4. Establish cryptographically signed session cookie
+  const sessionToken = signSession({
+    userId: `usr-${Date.now()}`,
+    email: email.toLowerCase(),
+    exp: Date.now() + SESSION_MAX_AGE * 1000,
+  });
+
   const cookieStore = await cookies();
-  cookieStore.set('hope_demo_role', 'User', {
+  cookieStore.set(SESSION_COOKIE_NAME, sessionToken, {
     path: '/',
     httpOnly: true,
-    maxAge: 86400 * 7,
-    sameSite: 'lax',
-  });
-  cookieStore.set('hope_demo_email', email, {
-    path: '/',
-    httpOnly: true,
-    maxAge: 86400 * 7,
-    sameSite: 'lax',
-  });
-  cookieStore.set('hope_demo_name', fullName, {
-    path: '/',
-    httpOnly: true,
-    maxAge: 86400 * 7,
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: SESSION_MAX_AGE,
     sameSite: 'lax',
   });
 
   redirect('/');
 }
 
-/**
- * Instant demo login for prototype evaluation (§3.1, Fig 4).
- * Demo safety: In production, one-click Superadmin access is disabled to protect database integrity.
- */
-export async function demoLoginAction(role: 'Superadmin' | 'Admin' | 'User' | UserRole) {
-  if (process.env.VERCEL && role === 'Superadmin') {
-    return { error: 'One-click Superadmin sign in is disabled on the live site for security. Please sign in with your credentials or use the User (Staff) demo account.' };
-  }
-
-  const cookieStore = await cookies();
-  const emailMap: Record<string, { email: string; name: string; role: UserRole }> = {
-    Superadmin: { email: 'superadmin@hope.com', name: 'Michael Superadmin', role: 'Superadmin' },
-    Admin: { email: 'admin@hope.com', name: 'Lisa Park', role: 'Admin' },
-    User: { email: 'user@hope.com', name: 'Alex Rivera', role: 'User' },
-    admin: { email: 'admin@hope.com', name: 'Lisa Park', role: 'Admin' },
-    sales: { email: 'user@hope.com', name: 'Alex Rivera', role: 'User' },
-    cashier: { email: 'user@hope.com', name: 'Alex Rivera', role: 'User' },
-  };
-
-  const info = emailMap[role] || emailMap.User;
-  cookieStore.set('hope_demo_role', info.role, { path: '/', httpOnly: true, maxAge: 86400 * 7, sameSite: 'lax' });
-  cookieStore.set('hope_demo_email', info.email, { path: '/', httpOnly: true, maxAge: 86400 * 7, sameSite: 'lax' });
-  cookieStore.set('hope_demo_name', info.name, { path: '/', httpOnly: true, maxAge: 86400 * 7, sameSite: 'lax' });
-
-  redirect('/');
-}
-
-/**
- * Destroys session and returns to public landing / login.
- */
 export async function logoutAction() {
   const cookieStore = await cookies();
-  cookieStore.delete('hope_demo_role');
-  cookieStore.delete('hope_demo_email');
-  cookieStore.delete('hope_demo_name');
+  cookieStore.delete(SESSION_COOKIE_NAME);
 
   try {
     const supabase = await createClient();
@@ -339,8 +336,8 @@ export async function createUserAction(data: {
       return { success: false, error: 'All fields (First Name, Last Name, Email, Password) are required.' };
     }
 
-    if (data.password.length < 4) {
-      return { success: false, error: 'Password must be at least 4 characters.' };
+    if (data.password.length < 8) {
+      return { success: false, error: 'Password must be at least 8 characters.' };
     }
 
     const passwordHash = await hashPassword(data.password);

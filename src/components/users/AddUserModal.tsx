@@ -22,7 +22,7 @@ export function AddUserModal({
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<'User' | 'Admin'>('User');
-  const [password, setPassword] = useState('demo');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -34,6 +34,11 @@ export function AddUserModal({
 
     if (!firstName.trim() || !lastName.trim() || !email.trim() || !password.trim()) {
       setError('First name, last name, email, and password are required.');
+      return;
+    }
+
+    if (password.trim().length < 8) {
+      setError('Password must be at least 8 characters.');
       return;
     }
 
@@ -55,7 +60,7 @@ export function AddUserModal({
         setFirstName('');
         setLastName('');
         setEmail('');
-        setPassword('demo');
+        setPassword('');
       }
     });
   };
@@ -162,7 +167,8 @@ export function AddUserModal({
             <input
               type="password"
               required
-              placeholder="Initial account password"
+              minLength={8}
+              placeholder="Initial account password (min 8 characters)"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs text-slate-900 dark:text-slate-100 focus:border-[#001A2B] focus:ring-1 focus:ring-[#001A2B]/40 focus:outline-none transition-all"
