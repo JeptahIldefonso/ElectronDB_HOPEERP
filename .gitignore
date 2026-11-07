@@ -34,12 +34,14 @@ yarn-error.log*
 *.env
 .env.local
 .env*.local
-.env.example
+!.env.example
 
 # isolated auth credentials
 auth.db
 auth.db*
-hope.db*
+
+# backups
+backups/
 
 # vercel
 .vercel
