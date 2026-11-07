@@ -1,3 +1,4 @@
+import os from 'node:os';
 import { createClient, type Client as LibSqlClient } from '@libsql/client';
 import { DatabaseSync } from 'node:sqlite';
 import path from 'node:path';
@@ -103,12 +104,15 @@ export function getHopeDbPath(): string {
     return getMasterDbPath();
   }
 
-  const workDir = process.env.VERCEL ? '/tmp' : process.cwd();
+  const workDir = process.env.VERCEL ? os.tmpdir() : process.cwd();
   const workPath = path.join(workDir, 'hope.work.db');
 
   if (!fs.existsSync(workPath)) {
     const masterPath = getMasterDbPath();
     try {
+      if (!fs.existsSync(workDir)) {
+        fs.mkdirSync(workDir, { recursive: true });
+      }
       fs.copyFileSync(masterPath, workPath);
       console.log(`[hope-db] Initialized working copy at ${workPath} from master seed.`);
     } catch (err) {
