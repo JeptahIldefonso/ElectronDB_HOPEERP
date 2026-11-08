@@ -1,62 +1,94 @@
-# dependencies
+# Dependencies
 /node_modules
 /.pnp
+.pnp.*
 .pnp.js
-.yarn/install-state.gz
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
 
-# testing
-/coverage
-
-# next.js
+# Next.js and build output
 /.next/
 /out/
-
-# production
 /build
+/dist
+*.tsbuildinfo
+next-env.d.ts
 
-# misc
-.DS_Store
-Thumbs.db
-*.pem
-*.bak
-*.sqlite3-journal
-*-journal
+# Vercel
+.vercel
 
-# debug
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-*.log
-
-# local env files
+# Environment and secrets (only .env.example is tracked)
 .env
-.env*
+.env.*
 *.env
 .env.local
 .env*.local
 !.env.example
+*.pem
+*.key
+*.p12
+*.pfx
 
-# isolated auth credentials
-auth.db
-auth.db*
-
-# local working database copy
+# Local databases. hope.db is the master seed and MUST stay tracked.
+# Never add a blanket *.db rule.
 hope.work.db
 hope.work.db*
+hope.work.db-*
+auth.db
+auth.db*
+auth.db-*
+*.db-wal
+*.db-shm
+*.db-journal
+*-journal
+*.sqlite
+*.sqlite3
+*.sqlite-*
+*.sqlite3-journal
 
-# backups
+# Backups and dumps (contain password hashes)
 backups/
+*.bak
+*.backup
+turso-*-backup.sql
 
-# vercel
-.vercel
+# Test and tooling output
+/coverage
+/test-results/
+/playwright-report/
+.eslintcache
+.turbo/
+.cache/
 
-# typescript
-*.tsbuildinfo
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
 
-# scratch and temporary files
+# OS
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Editors
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+*.swo
+*~
+
+# Scratch and AI agent configurations
+*.tmp
+.tmp/
+tmp/
 scratch/
-
-# AI agent configurations
 .agent/
 .agents/
-scratch/chrome-profile/
