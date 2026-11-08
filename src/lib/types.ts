@@ -12,6 +12,8 @@ export interface UserSession {
   fullName: string;
   isBlocked?: boolean;
   rights?: string[];
+  mustChangePassword?: boolean;
+  sessionVersion?: number;
 }
 
 export interface UserAccount {
@@ -27,6 +29,8 @@ export interface UserAccount {
   stamp: string;
   createdAt?: string;
   rights?: string[];
+  mustChangePassword?: boolean;
+  sessionVersion?: number;
 }
 
 export interface RightItem {

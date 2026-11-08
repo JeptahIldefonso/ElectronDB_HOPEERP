@@ -10,6 +10,9 @@ import type { UserRole, UserSession, UserAccount } from '@/lib/types';
 import {
   ensureAuthDb,
   findAccountByEmail,
+  findAccountById,
+  adminResetUserPassword,
+  updateUserPassword,
   emailExists,
   insertAccount,
   hashPassword,
@@ -31,21 +34,23 @@ const SESSION_MAX_AGE = 86400 * 7; // 7 days
 interface SessionPayload {
   userId: string;
   email: string;
+  sessionVersion?: number;
   exp: number;
 }
 
-const FALLBACK_AUTH_SECRET = 'electrondb-hope-erd-production-session-fallback-secret-2026';
-
-function getSessionSecret(): string {
+function getSessionSecret(): string | null {
   const secret = process.env.AUTH_SECRET || process.env.SESSION_SECRET;
   if (!secret || secret.trim().length === 0) {
-    return FALLBACK_AUTH_SECRET;
+    return null;
   }
   return secret.trim();
 }
 
 function signSession(payload: SessionPayload): string {
   const secret = getSessionSecret();
+  if (!secret) {
+    throw new Error('AUTH_SECRET or SESSION_SECRET must be configured');
+  }
   const encodedPayload = Buffer.from(JSON.stringify(payload)).toString('base64url');
   const signature = crypto.createHmac('sha256', secret).update(encodedPayload).digest('base64url');
   return `${encodedPayload}.${signature}`;
@@ -54,6 +59,7 @@ function signSession(payload: SessionPayload): string {
 function verifySession(token: string): SessionPayload | null {
   try {
     const secret = getSessionSecret();
+    if (!secret) return null;
     const parts = token.split('.');
     if (parts.length !== 2) return null;
     const [encodedPayload, signature] = parts;
@@ -85,6 +91,11 @@ export const getCurrentUser = cache(async function getCurrentUser(): Promise<Use
           await ensureAuthDb();
           const account = await findAccountByEmail(session.email);
           if (account && !account.isBlocked && account.status === 'Active') {
+            const sessionVer = typeof session.sessionVersion === 'number' ? session.sessionVersion : 0;
+            const accountVer = typeof account.sessionVersion === 'number' ? account.sessionVersion : 1;
+            if (sessionVer < accountVer) {
+              return null; // Token invalidated or missing sessionVersion
+            }
             return {
               id: account.userId,
               email: account.email,
@@ -92,6 +103,8 @@ export const getCurrentUser = cache(async function getCurrentUser(): Promise<Use
               fullName: account.fullName,
               isBlocked: account.isBlocked,
               rights: account.rights || [],
+              mustChangePassword: Boolean(account.mustChangePassword),
+              sessionVersion: account.sessionVersion ?? 1,
             };
           }
         } catch (dbErr: any) {
@@ -180,6 +193,7 @@ export async function loginAction(formData: FormData): Promise<{ error?: string 
       const sessionToken = signSession({
         userId: account.userId,
         email: account.email,
+        sessionVersion: account.sessionVersion ?? 1,
         exp: Date.now() + SESSION_MAX_AGE * 1000,
       });
 
@@ -191,6 +205,10 @@ export async function loginAction(formData: FormData): Promise<{ error?: string 
         maxAge: SESSION_MAX_AGE,
         sameSite: 'lax',
       });
+
+      if (account.mustChangePassword) {
+        redirect('/change-password');
+      }
 
       redirect('/');
     }
@@ -302,6 +320,9 @@ export async function fetchUsersAction(): Promise<{ users: UserAccount[]; error?
     if (!user || (user.role !== 'Superadmin' && user.role !== 'Admin' && user.role !== 'admin')) {
       return { users: [], error: 'Access denied: Administrator privileges required.' };
     }
+    if (user.mustChangePassword) {
+      return { users: [], error: 'Password change required: You must change your temporary password first.' };
+    }
 
     const users = await getAllUsers(user.role);
     return { users };
@@ -321,6 +342,13 @@ export async function checkUserPermission(
   const user = await getCurrentUser();
   if (!user) {
     return { authorized: false, user: null, error: 'Unauthorized: Please sign in.' };
+  }
+  if (user.mustChangePassword) {
+    return {
+      authorized: false,
+      user,
+      error: 'Password change required: You must change your temporary password before performing any actions.',
+    };
   }
   const role = user.role.toLowerCase();
   if (role === 'superadmin' || role === 'admin') {
@@ -448,5 +476,156 @@ export async function updateUserProfileAction(data: {
     return res;
   } catch (err: any) {
     return { success: false, error: err?.message || 'Failed to update user profile.' };
+  }
+}
+
+/**
+ * Admin-initiated password reset:
+ * - Checks caller role from database (not just cookie).
+ * - Admin can reset only role 'User'.
+ * - Superadmin can reset 'Admin' or 'Superadmin'.
+ * - Nobody can reset their own account.
+ * - Generates 12+ char temporary password with crypto.randomBytes, hashes with bcrypt (cost 10).
+ * - Sets mustChangePassword = 1 and increments sessionVersion to invalidate existing sessions.
+ * - Returns tempPassword to caller for one-time display in modal.
+ */
+export async function adminResetPasswordAction(targetUserId: string): Promise<{
+  success: boolean;
+  tempPassword?: string;
+  error?: string;
+}> {
+  try {
+    const sessionUser = await getCurrentUser();
+    if (!sessionUser) {
+      return { success: false, error: 'Unauthorized: Please sign in.' };
+    }
+
+    // Verify caller role directly against database
+    const caller = await findAccountById(sessionUser.id);
+    if (!caller || (caller.role !== 'Superadmin' && caller.role !== 'Admin')) {
+      return { success: false, error: 'Access denied: Only administrators can reset passwords.' };
+    }
+
+    if (caller.userId === targetUserId) {
+      return { success: false, error: 'You cannot reset your own password. Please use Change Password instead.' };
+    }
+
+    const targetUser = await findAccountById(targetUserId);
+    if (!targetUser) {
+      return { success: false, error: 'Target user account not found.' };
+    }
+
+    // Admin may reset only role User; only Superadmin may reset Admin or Superadmin
+    if (caller.role === 'Admin' && targetUser.role !== 'User') {
+      return { success: false, error: 'Administrators may only reset passwords for User accounts.' };
+    }
+
+    // Generate 12+ character random temporary password
+    const rawRandom = crypto.randomBytes(9).toString('base64url');
+    const tempPassword = `Tmp-${rawRandom}`;
+    const tempPasswordHash = await hashPassword(tempPassword);
+
+    const res = await adminResetUserPassword(
+      targetUserId,
+      tempPasswordHash,
+      caller.fullName || caller.role
+    );
+
+    if (!res.success) {
+      return { success: false, error: res.error || 'Failed to reset password.' };
+    }
+
+    revalidatePath('/users');
+    return { success: true, tempPassword };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Unexpected error during password reset.' };
+  }
+}
+
+/**
+ * Self-service / forced change password for signed-in users:
+ * - Validates current password against database hash.
+ * - Requires new password >= 8 chars and different from old password.
+ * - Clears mustChangePassword = 0, increments sessionVersion to invalidate old tokens.
+ * - Re-issues session cookie with the new sessionVersion.
+ */
+export async function changePasswordAction(formData: FormData): Promise<{ success: boolean; error?: string }> {
+  try {
+    const sessionUser = await getCurrentUser();
+    if (!sessionUser) {
+      return { success: false, error: 'Please sign in to change your password.' };
+    }
+
+    const currentPassword = ((formData.get('currentPassword') as string) || '').trim();
+    const newPassword = ((formData.get('newPassword') as string) || '').trim();
+    const confirmPassword = ((formData.get('confirmPassword') as string) || '').trim();
+
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      return { success: false, error: 'All fields are required.' };
+    }
+
+    if (newPassword.length < 8) {
+      return { success: false, error: 'New password must be at least 8 characters long.' };
+    }
+
+    if (newPassword !== confirmPassword) {
+      return { success: false, error: 'New password and confirm password do not match.' };
+    }
+
+    // Fetch user with passwordHash directly from database
+    const account = await findAccountById(sessionUser.id);
+    if (!account) {
+      return { success: false, error: 'User account not found.' };
+    }
+
+    // Verify current password
+    const isCurrentValid = await verifyPassword(currentPassword, account.passwordHash);
+    if (!isCurrentValid) {
+      return { success: false, error: 'Current password is incorrect.' };
+    }
+
+    // New password must be different from current password
+    if (currentPassword === newPassword) {
+      return { success: false, error: 'New password must be different from the old password.' };
+    }
+
+    const newPasswordHash = await hashPassword(newPassword);
+    const updateRes = await updateUserPassword(
+      account.userId,
+      newPasswordHash,
+      account.fullName || account.email
+    );
+
+    if (!updateRes.success) {
+      return { success: false, error: updateRes.error || 'Failed to update password.' };
+    }
+
+    // Fetch fresh sessionVersion
+    const updatedAccount = await findAccountById(account.userId);
+    const newVersion = updatedAccount?.sessionVersion ?? ((account.sessionVersion ?? 1) + 1);
+
+    // Re-issue session cookie with new sessionVersion
+    const sessionToken = signSession({
+      userId: account.userId,
+      email: account.email,
+      sessionVersion: newVersion,
+      exp: Date.now() + SESSION_MAX_AGE * 1000,
+    });
+
+    const cookieStore = await cookies();
+    cookieStore.set(SESSION_COOKIE_NAME, sessionToken, {
+      path: '/',
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      maxAge: SESSION_MAX_AGE,
+      sameSite: 'lax',
+    });
+
+    redirect('/');
+  } catch (err: any) {
+    if (err?.message === 'NEXT_REDIRECT' || err?.digest?.startsWith('NEXT_REDIRECT')) {
+      throw err;
+    }
+    return { success: false, error: err?.message || 'Failed to change password.' };
   }
 }

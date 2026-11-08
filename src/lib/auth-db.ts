@@ -65,7 +65,9 @@ export async function ensureAuthDb(): Promise<void> {
         isBlocked INTEGER NOT NULL DEFAULT 0,
         status TEXT NOT NULL DEFAULT 'Active' CHECK(status IN ('Active', 'Inactive')),
         stamp TEXT NOT NULL,
-        createdAt TEXT NOT NULL DEFAULT (datetime('now'))
+        createdAt TEXT NOT NULL DEFAULT (datetime('now')),
+        mustChangePassword INTEGER NOT NULL DEFAULT 0,
+        sessionVersion INTEGER NOT NULL DEFAULT 1
       );
     `);
 
@@ -101,6 +103,20 @@ export async function ensureAuthDb(): Promise<void> {
       );
     `);
 
+    // Guarded idempotent column migration for mustChangePassword and sessionVersion
+    try {
+      const userColumns = await db.query<any>('PRAGMA table_info(USERS)');
+      const colNames = userColumns.map((c: any) => c.name);
+      if (!colNames.includes('mustChangePassword')) {
+        await db.exec('ALTER TABLE USERS ADD COLUMN mustChangePassword INTEGER NOT NULL DEFAULT 0;');
+      }
+      if (!colNames.includes('sessionVersion')) {
+        await db.exec('ALTER TABLE USERS ADD COLUMN sessionVersion INTEGER NOT NULL DEFAULT 1;');
+      }
+    } catch (migErr: any) {
+      console.warn('[auth-db] Column migration note:', migErr?.message);
+    }
+
     // Populate RIGHTS table with the 36 canonical rights
     for (const r of CANONICAL_RIGHTS) {
       await db.run(`
@@ -109,129 +125,48 @@ export async function ensureAuthDb(): Promise<void> {
       `, [r.rightCode, r.module, r.label]);
     }
 
-    // Canonical accounts per system requirements:
-    // 1. User: admin1@gmail.com / useradmin
-    // 2. Admin: admin2@gmail.com / useradmin
-    // 3. Superadmin: superadmin@hope.com / useradmin
-    // 4. Superadmin (Developer): ildefonsojeptahashleyr@gmail.com / usersuperadmin
-    const HASH_USERADMIN = '$2b$10$X9w/MWVa3yaCKf9RSO.g4u4hBJ.DL16yJQ/gQ/OwaUSIXLupimuVO'; // 'useradmin'
-    const HASH_USERSUPERADMIN = '$2b$10$a5H8U/QMgwhb7hbZabadZescwCitO.C/nU/QgdAj/SeiaMwOGsFGm'; // 'usersuperadmin'
-    const OLD_MISMATCHED_HASH = '$2b$10$Llhh3Wm5yBZ1lzxToRg..evyWWX0HNLT2hGsYS8qO5jVruBZyIS5O';
-
+    // Developer break-glass account provisioned ONLY when DEV_ADMIN_PASSWORD_HASH is set.
+    // No hardcoded bcrypt hashes in code. If DEV_ADMIN_PASSWORD_HASH is missing, seed 0 accounts.
     const envAdminHash = getAdminPasswordHash();
-    const effectiveSuperadminHash =
-      envAdminHash && envAdminHash !== OLD_MISMATCHED_HASH ? envAdminHash : HASH_USERSUPERADMIN;
-
-    const canonicalAccounts: Array<{
-      userId: string;
-      firstName: string;
-      lastName: string;
-      email: string;
-      passwordHash: string;
-      role: 'Superadmin' | 'Admin' | 'User';
-      rights: string[];
-    }> = [
-      {
-        userId: 'usr-admin1',
-        firstName: 'Admin',
-        lastName: 'One',
-        email: 'admin1@gmail.com',
-        passwordHash: HASH_USERADMIN,
-        role: 'User',
-        rights: [
-          'add_customer',
-          'edit_customer',
-          'add_product',
-          'edit_product',
-          'add_price',
-          'edit_price',
-          'add_sale',
-          'edit_sale',
-          'view_sale_details',
-          'add_sale_detail',
-          'edit_sale_detail',
-          'add_employee',
-          'edit_employee',
-          'view_job_history',
-          'report_top_customers',
-          'report_product_master',
-          'report_top_products',
-          'report_active_employees',
-          'report_all_employees',
-          'report_employee_job_history',
-          'report_top_sales',
-        ],
-      },
-      {
-        userId: 'usr-admin2',
-        firstName: 'Admin',
-        lastName: 'Two',
-        email: 'admin2@gmail.com',
-        passwordHash: HASH_USERADMIN,
-        role: 'Admin',
-        rights: CANONICAL_RIGHTS.map((r) => r.rightCode),
-      },
-      {
-        userId: 'usr-superadmin',
-        firstName: 'Hope',
-        lastName: 'Superadmin',
-        email: 'superadmin@hope.com',
-        passwordHash: HASH_USERADMIN,
-        role: 'Superadmin',
-        rights: CANONICAL_RIGHTS.map((r) => r.rightCode),
-      },
-      {
-        userId: 'usr-dev-jeptah',
-        firstName: 'Jeptah Ashley',
-        lastName: 'Ildefonso',
-        email: (process.env.DEV_ADMIN_EMAIL || 'ildefonsojeptahashleyr@gmail.com').toLowerCase().trim(),
-        passwordHash: effectiveSuperadminHash,
-        role: 'Superadmin',
-        rights: CANONICAL_RIGHTS.map((r) => r.rightCode),
-      },
-    ];
-
-    for (const acc of canonicalAccounts) {
-      const existing = await db.get<{ userId: string }>(
-        'SELECT userId FROM USERS WHERE LOWER(email) = LOWER(?)',
-        [acc.email]
+    if (envAdminHash) {
+      const devEmail = (process.env.DEV_ADMIN_EMAIL || 'ildefonsojeptahashleyr@gmail.com').toLowerCase().trim();
+      const existing = await db.get<{ userId: string; passwordHash: string }>(
+        'SELECT userId, passwordHash FROM USERS WHERE LOWER(email) = LOWER(?)',
+        [devEmail]
       );
-      const activeUserId = existing?.userId || acc.userId;
+      const devUserId = existing?.userId || 'usr-dev-jeptah';
+
       if (!existing) {
         await db.run(
           `
-          INSERT INTO USERS (userId, firstName, lastName, email, passwordHash, role, isBlocked, status, stamp)
-          VALUES (?, ?, ?, ?, ?, ?, 0, 'Active', ?)
+          INSERT INTO USERS (userId, firstName, lastName, email, passwordHash, role, isBlocked, status, stamp, mustChangePassword, sessionVersion)
+          VALUES (?, ?, ?, ?, ?, 'Superadmin', 0, 'Active', ?, 0, 1)
         `,
           [
-            acc.userId,
-            acc.firstName,
-            acc.lastName,
-            acc.email.toLowerCase(),
-            acc.passwordHash,
-            acc.role,
+            devUserId,
+            'Jeptah Ashley',
+            'Ildefonso',
+            devEmail,
+            envAdminHash,
             getStampString('CREATED', 'system'),
           ]
         );
-      } else {
+      } else if (existing.passwordHash !== envAdminHash) {
+        // Break-glass rotate developer account
         await db.run(
-          `
-          UPDATE USERS 
-          SET passwordHash = ?, role = ?, isBlocked = 0, status = 'Active'
-          WHERE userId = ?
-        `,
-          [acc.passwordHash, acc.role, existing.userId]
+          `UPDATE USERS SET passwordHash = ?, role = 'Superadmin', status = 'Active', isBlocked = 0, sessionVersion = COALESCE(sessionVersion, 1) + 1 WHERE userId = ?`,
+          [envAdminHash, existing.userId]
         );
       }
 
-      // Seed rights for the account
-      for (const rightCode of acc.rights) {
+      // Seed rights for developer account
+      for (const r of CANONICAL_RIGHTS) {
         await db.run(
           `
           INSERT OR IGNORE INTO USERRIGHTS (userId, rightCode)
           VALUES (?, ?)
         `,
-          [activeUserId, rightCode]
+          [devUserId, r.rightCode]
         );
       }
     }
@@ -251,7 +186,7 @@ export async function findAccountByEmail(email: string): Promise<(UserAccount & 
     const db = getHopeDb();
     
     const user = await db.get<any>(`
-      SELECT userId, firstName, lastName, email, passwordHash, role, isBlocked, status, stamp, createdAt
+      SELECT userId, firstName, lastName, email, passwordHash, role, isBlocked, status, stamp, createdAt, mustChangePassword, sessionVersion
       FROM USERS
       WHERE LOWER(email) = LOWER(?)
     `, [email.trim()]);
@@ -281,6 +216,8 @@ export async function findAccountByEmail(email: string): Promise<(UserAccount & 
         stamp: user.stamp,
         createdAt: user.createdAt,
         rights,
+        mustChangePassword: Boolean(user.mustChangePassword),
+        sessionVersion: user.sessionVersion ?? 1,
       };
     }
 
@@ -387,7 +324,7 @@ export async function getAllUsers(actingRole: UserRole = 'Admin'): Promise<UserA
 
   // Superadmin sees all accounts; Admin sees Admins and Users (Superadmin accounts are hidden - Guide §3.8)
   let query = `
-    SELECT userId, firstName, lastName, email, role, isBlocked, status, stamp, createdAt
+    SELECT userId, firstName, lastName, email, role, isBlocked, status, stamp, createdAt, mustChangePassword, sessionVersion
     FROM USERS
   `;
   if (actingRole !== 'Superadmin') {
@@ -414,6 +351,8 @@ export async function getAllUsers(actingRole: UserRole = 'Admin'): Promise<UserA
       stamp: u.stamp,
       createdAt: u.createdAt,
       rights,
+      mustChangePassword: Boolean(u.mustChangePassword),
+      sessionVersion: u.sessionVersion ?? 1,
     });
   }
 
@@ -573,5 +512,93 @@ export async function updateUserProfile(
     return { success: true };
   } catch (err: any) {
     return { success: false, error: err?.message || 'Failed to update user profile.' };
+  }
+}
+
+export async function findAccountById(userId: string): Promise<UserAccount | undefined> {
+  try {
+    await ensureAuthDb();
+    const db = getHopeDb();
+    const user = await db.get<any>(`
+      SELECT userId, firstName, lastName, email, passwordHash, role, isBlocked, status, stamp, createdAt, mustChangePassword, sessionVersion
+      FROM USERS
+      WHERE userId = ?
+    `, [userId]);
+
+    if (!user) return undefined;
+
+    let rights: string[] = [];
+    try {
+      const rightsRows = await db.query<any>('SELECT rightCode FROM USERRIGHTS WHERE userId = ?', [user.userId]);
+      rights = rightsRows.map((r: any) => r.rightCode);
+    } catch {}
+
+    return {
+      userId: user.userId,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      fullName: `${user.firstName} ${user.lastName}`.trim(),
+      email: user.email,
+      passwordHash: user.passwordHash,
+      role: user.role,
+      isBlocked: Boolean(user.isBlocked),
+      status: user.status,
+      stamp: user.stamp,
+      createdAt: user.createdAt,
+      rights,
+      mustChangePassword: Boolean(user.mustChangePassword),
+      sessionVersion: user.sessionVersion ?? 1,
+    };
+  } catch (err: any) {
+    console.warn('[auth-db] findAccountById warning:', err?.message);
+    return undefined;
+  }
+}
+
+export async function adminResetUserPassword(
+  userId: string,
+  tempPasswordHash: string,
+  updatedBy = 'Admin'
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    await ensureAuthDb();
+    const db = getHopeDb();
+    const stamp = getStampString('EDITED', updatedBy);
+    const res = await db.run(`
+      UPDATE USERS
+      SET passwordHash = ?, mustChangePassword = 1, sessionVersion = COALESCE(sessionVersion, 1) + 1, stamp = ?
+      WHERE userId = ?
+    `, [tempPasswordHash, stamp, userId]);
+
+    if (res.changes === 0) {
+      return { success: false, error: 'User account not found.' };
+    }
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Failed to reset password.' };
+  }
+}
+
+export async function updateUserPassword(
+  userId: string,
+  newPasswordHash: string,
+  updatedBy = 'User'
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    await ensureAuthDb();
+    const db = getHopeDb();
+    const stamp = getStampString('EDITED', updatedBy);
+    const res = await db.run(`
+      UPDATE USERS
+      SET passwordHash = ?, mustChangePassword = 0, sessionVersion = COALESCE(sessionVersion, 1) + 1, stamp = ?
+      WHERE userId = ?
+    `, [newPasswordHash, stamp, userId]);
+
+    if (res.changes === 0) {
+      return { success: false, error: 'User account not found.' };
+    }
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Failed to update password.' };
   }
 }
