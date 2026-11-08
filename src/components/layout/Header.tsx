@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
+import Link from 'next/link';
 import Image from 'next/image';
-import { Bell, ChevronDown, Menu, LogOut, ShieldCheck } from 'lucide-react';
+import { Bell, ChevronDown, Menu, LogOut, ShieldCheck, KeyRound } from 'lucide-react';
 import { useSidebar } from './SidebarContext';
 import { logoutAction } from '@/app/actions/auth';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
@@ -151,6 +152,17 @@ export function Header({ userRole = 'Admin', userName = 'Administrator' }: Heade
 
               <div className="border-b border-border pb-1">
                 <ThemeToggle variant="menu-item" />
+              </div>
+
+              <div className="p-1 pt-1.5 border-b border-border pb-1.5">
+                <Link
+                  href="/change-password"
+                  onClick={() => setIsMenuOpen(false)}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs font-medium text-text hover:bg-surface-2 rounded-[2px] transition-colors cursor-pointer"
+                >
+                  <KeyRound className="w-3.5 h-3.5 text-text-muted" />
+                  <span>Change Password</span>
+                </Link>
               </div>
 
               <div className="p-1 pt-1.5">

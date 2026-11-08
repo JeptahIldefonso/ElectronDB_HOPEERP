@@ -103,7 +103,14 @@ Visit [http://localhost:3000](http://localhost:3000) in your browser. You will b
 On the `/login` screen, staff authenticate with their email address and password, or register a new account:
 - **Self-Registration**: New accounts register via the Register tab with a minimum 8-character password. Newly registered accounts receive the baseline `User` role per Student Guide §3.1.
 - **Administrator Accounts**: The initial Superadmin account is provisioned via the `DEV_ADMIN_PASSWORD_HASH` environment variable. Role assignments and permission grants are managed by administrators via the System User Management module.
-- **Session Security**: Sessions are secured with an `httpOnly` cryptographically signed token (`HMAC-SHA256`), and user status is verified against the database on every request.
+- **Admin-Initiated Password Reset**: Administrators can reset a user's password directly in User Management (`/users`). The system generates a 12+ character temporary password and flags `mustChangePassword = 1`.
+- **Forced Password Change**: Upon signing in with a temporary password, the user is redirected to `/change-password` and cannot access ERP modules until a new password ($ge 8$ characters) is set.
+- **Developer Break-Glass Rotation**: In emergency lockout situations, generate a new base64 bcrypt hash:
+  ```bash
+  node -e "console.log('base64:' + Buffer.from(require('bcryptjs').hashSync('your-new-password', 10)).toString('base64'))"
+  ```
+  Set `DEV_ADMIN_PASSWORD_HASH="base64:<hash>"` in `.env.local` or Vercel Environment Variables and redeploy. The startup seed routine updates the developer account to the new hash without altering other users.
+- **Session Security**: Sessions are secured with an `httpOnly` cryptographically signed token (`HMAC-SHA256`). When a user's password is changed or reset, their `sessionVersion` increments in the database, immediately invalidating any prior session tokens across all devices.
 
 ---
 

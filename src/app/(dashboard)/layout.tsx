@@ -16,6 +16,11 @@ export default async function DashboardLayout({
     redirect('/login');
   }
 
+  // Force password change if flagged with temporary password
+  if (user.mustChangePassword) {
+    redirect('/change-password');
+  }
+
   const displayName = user.fullName || 'Administrator';
 
   return (

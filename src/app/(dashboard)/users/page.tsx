@@ -26,6 +26,7 @@ export default async function UsersPage() {
       <UserManagementView
         initialUsers={users}
         currentUserRole={user.role}
+        currentUserId={user.id}
       />
     </div>
   );

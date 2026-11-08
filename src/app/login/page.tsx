@@ -221,12 +221,20 @@ export default function LoginPage() {
               </div>
 
               <div>
-                <label
-                  htmlFor="signin-password"
-                  className="block font-mono text-[11px] uppercase tracking-[0.14em] font-medium text-[#41555f] dark:text-text-muted mb-1.5"
-                >
-                  Password
-                </label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label
+                    htmlFor="signin-password"
+                    className="block font-mono text-[11px] uppercase tracking-[0.14em] font-medium text-[#41555f] dark:text-text-muted"
+                  >
+                    Password
+                  </label>
+                  <Link
+                    href="/forgot-password"
+                    className="text-[11px] font-sans text-[#41555f] hover:text-[#041a24] dark:text-text-muted dark:hover:text-text transition-colors"
+                  >
+                    Forgot password?
+                  </Link>
+                </div>
                 <div className="relative">
                   <input
                     id="signin-password"

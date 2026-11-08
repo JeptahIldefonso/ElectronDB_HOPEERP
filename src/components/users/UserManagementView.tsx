@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { UserPlus, Loader2 } from 'lucide-react';
 import { RightsModal } from '@/components/users/RightsModal';
 import { EditUserModal } from '@/components/users/EditUserModal';
+import { ResetPasswordModal } from '@/components/users/ResetPasswordModal';
 import { AddUserModal } from '@/components/users/AddUserModal';
 import { toggleBlockUserAction } from '@/app/actions/auth';
 import type { UserAccount, UserRole } from '@/lib/types';
@@ -12,13 +13,15 @@ import type { UserAccount, UserRole } from '@/lib/types';
 interface UserManagementViewProps {
   initialUsers: UserAccount[];
   currentUserRole: UserRole;
+  currentUserId?: string;
 }
 
-export function UserManagementView({ initialUsers, currentUserRole }: UserManagementViewProps) {
+export function UserManagementView({ initialUsers, currentUserRole, currentUserId }: UserManagementViewProps) {
   const router = useRouter();
   const [users, setUsers] = useState<UserAccount[]>(initialUsers);
   const [selectedUserForRights, setSelectedUserForRights] = useState<UserAccount | null>(null);
   const [selectedUserForEdit, setSelectedUserForEdit] = useState<UserAccount | null>(null);
+  const [selectedUserForReset, setSelectedUserForReset] = useState<UserAccount | null>(null);
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
 
@@ -191,6 +194,17 @@ export function UserManagementView({ initialUsers, currentUserRole }: UserManage
                             >
                               Edit
                             </button>
+
+                            {/* Reset Password Button */}
+                            {u.userId !== currentUserId && (isSuperadmin || u.role === 'User') && (
+                              <button
+                                type="button"
+                                onClick={() => setSelectedUserForReset(u)}
+                                className="px-2.5 py-1 rounded text-xs font-medium text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700/50 hover:bg-amber-50 dark:hover:bg-amber-950/30 cursor-pointer transition-colors"
+                              >
+                                Reset Password
+                              </button>
+                            )}
                           </div>
                         )}
                       </td>
@@ -222,6 +236,17 @@ export function UserManagementView({ initialUsers, currentUserRole }: UserManage
           router.refresh();
         }}
         currentUserRole={currentUserRole}
+      />
+
+      {/* Reset Password Modal */}
+      <ResetPasswordModal
+        user={selectedUserForReset}
+        isOpen={Boolean(selectedUserForReset)}
+        onClose={() => setSelectedUserForReset(null)}
+        currentUserRole={currentUserRole}
+        onSuccess={() => {
+          router.refresh();
+        }}
       />
 
       {/* Add User Modal */}
