@@ -1,3 +1,4 @@
+import bcrypt from 'bcryptjs';
 // scripts/reset-turso.mjs
 // Restores the live Turso production database to the pristine canonical 928 rows from hope.db.
 // Requires explicit guard flag: --confirm=RESET_PRODUCTION_TURSO
@@ -244,56 +245,104 @@ async function main() {
     });
   }
 
-  // Developer break-glass account provisioned ONLY when DEV_ADMIN_PASSWORD_HASH is set.
-  // No hardcoded bcrypt hashes in code. If DEV_ADMIN_PASSWORD_HASH is missing, seed 0 accounts.
+  // Provision canonical accounts:
+  // 1. User: admin1@gmail.com / useradmin
+  // 2. Admin: admin2@gmail.com / useradmin
+  // 3. Superadmin: superadmin@hope.com / useradmin
+  // 4. Developer Superadmin: ildefonsojeptahashleyr@gmail.com / usersuperadmin (or DEV_ADMIN_PASSWORD_HASH)
   const rawAdminHash = process.env.DEV_ADMIN_PASSWORD_HASH?.trim();
-  let adminHash = rawAdminHash;
+  let envAdminHash = rawAdminHash;
   if (rawAdminHash?.startsWith('base64:')) {
     try {
-      adminHash = Buffer.from(rawAdminHash.slice(7), 'base64').toString('utf8').trim();
+      envAdminHash = Buffer.from(rawAdminHash.slice(7), 'base64').toString('utf8').trim();
     } catch {
-      adminHash = undefined;
+      envAdminHash = undefined;
     }
   } else if (rawAdminHash && !rawAdminHash.startsWith('$2')) {
     try {
       const decoded = Buffer.from(rawAdminHash, 'base64').toString('utf8').trim();
-      if (decoded.startsWith('$2')) adminHash = decoded;
-    } catch {
-      // Not base64
-    }
+      if (decoded.startsWith('$2')) envAdminHash = decoded;
+    } catch {}
   }
 
-  if (adminHash) {
-    const adminEmail = (process.env.DEV_ADMIN_EMAIL || 'ildefonsojeptahashleyr@gmail.com').toLowerCase().trim();
+  const devEmail = (process.env.DEV_ADMIN_EMAIL || 'ildefonsojeptahashleyr@gmail.com').toLowerCase().trim();
+
+  const canonicalAccounts = [
+    {
+      userId: 'usr-admin1',
+      firstName: 'Admin',
+      lastName: 'One',
+      email: 'admin1@gmail.com',
+      defaultPassword: 'useradmin',
+      role: 'User',
+      rights: [
+        'add_customer', 'edit_customer',
+        'add_product', 'edit_product', 'add_price', 'edit_price',
+        'add_sale', 'edit_sale', 'view_sale_details', 'add_sale_detail', 'edit_sale_detail',
+        'add_employee', 'edit_employee', 'view_job_history',
+        'report_top_customers', 'report_product_master', 'report_top_products',
+        'report_active_employees', 'report_all_employees', 'report_employee_job_history', 'report_top_sales'
+      ],
+    },
+    {
+      userId: 'usr-admin2',
+      firstName: 'Admin',
+      lastName: 'Two',
+      email: 'admin2@gmail.com',
+      defaultPassword: 'useradmin',
+      role: 'Admin',
+      rights: canonicalRights.map(r => r.code),
+    },
+    {
+      userId: 'usr-superadmin',
+      firstName: 'Hope',
+      lastName: 'Superadmin',
+      email: 'superadmin@hope.com',
+      defaultPassword: 'useradmin',
+      role: 'Superadmin',
+      rights: canonicalRights.map(r => r.code),
+    },
+    {
+      userId: 'usr-dev-jeptah',
+      firstName: 'Jeptah Ashley',
+      lastName: 'Ildefonso',
+      email: devEmail,
+      defaultPassword: 'usersuperadmin',
+      explicitHash: envAdminHash,
+      role: 'Superadmin',
+      rights: canonicalRights.map(r => r.code),
+    },
+  ];
+
+  for (const acc of canonicalAccounts) {
     const existingRes = await turso.execute({
-      sql: 'SELECT userId FROM USERS WHERE LOWER(email) = LOWER(?)',
-      args: [adminEmail],
+      sql: 'SELECT userId, passwordHash FROM USERS WHERE LOWER(email) = LOWER(?)',
+      args: [acc.email],
     });
     const existing = existingRes.rows[0];
-    const devUserId = existing ? String(existing.userId) : 'usr-dev-jeptah';
+    const activeUserId = existing ? String(existing.userId) : acc.userId;
 
     if (!existing) {
+      const hashToUse = acc.explicitHash || (acc.defaultPassword ? bcrypt.hashSync(acc.defaultPassword, 10) : '');
       await turso.execute({
-        sql: 'INSERT INTO USERS (userId, firstName, lastName, email, passwordHash, role, isBlocked, status, stamp, mustChangePassword, sessionVersion) VALUES (?, ?, ?, ?, ?, "Superadmin", 0, "Active", "CREATED system", 0, 1)',
-        args: [devUserId, 'Jeptah Ashley', 'Ildefonso', adminEmail, adminHash],
+        sql: 'INSERT INTO USERS (userId, firstName, lastName, email, passwordHash, role, isBlocked, status, stamp, mustChangePassword, sessionVersion) VALUES (?, ?, ?, ?, ?, ?, 0, "Active", "CREATED system", 0, 1)',
+        args: [activeUserId, acc.firstName, acc.lastName, acc.email.toLowerCase(), hashToUse, acc.role],
       });
-    } else {
+    } else if (acc.userId === 'usr-dev-jeptah' && acc.explicitHash && existing.passwordHash !== acc.explicitHash) {
       await turso.execute({
         sql: 'UPDATE USERS SET passwordHash = ?, role = "Superadmin", isBlocked = 0, status = "Active", sessionVersion = COALESCE(sessionVersion, 1) + 1 WHERE userId = ?',
-        args: [adminHash, existing.userId],
+        args: [acc.explicitHash, existing.userId],
       });
     }
 
-    for (const r of canonicalRights) {
+    for (const code of acc.rights) {
       await turso.execute({
         sql: 'INSERT OR IGNORE INTO USERRIGHTS (userId, rightCode) VALUES (?, ?)',
-        args: [devUserId, r.code],
+        args: [activeUserId, code],
       });
     }
-    console.log('  ✓ Initialized developer break-glass superadmin account in Turso');
-  } else {
-    console.log('  ℹ No DEV_ADMIN_PASSWORD_HASH provided. Skipped seeding developer account.');
   }
+  console.log('  ✓ Initialized 4 canonical accounts in Turso');
 
   console.log('\n[5/5] Running Parity & KPI Assertions...');
   console.log('----------------------------------------------------');

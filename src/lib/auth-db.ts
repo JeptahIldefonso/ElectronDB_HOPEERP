@@ -125,52 +125,113 @@ export async function ensureAuthDb(): Promise<void> {
       `, [r.rightCode, r.module, r.label]);
     }
 
-    // Developer break-glass account provisioned ONLY when DEV_ADMIN_PASSWORD_HASH is set.
-    // No hardcoded bcrypt hashes in code. If DEV_ADMIN_PASSWORD_HASH is missing, seed 0 accounts.
+    // Provision canonical accounts:
+    // 1. User: admin1@gmail.com / useradmin
+    // 2. Admin: admin2@gmail.com / useradmin
+    // 3. Superadmin: superadmin@hope.com / useradmin
+    // 4. Developer Superadmin: ildefonsojeptahashleyr@gmail.com / usersuperadmin (or DEV_ADMIN_PASSWORD_HASH)
     const envAdminHash = getAdminPasswordHash();
-    if (envAdminHash) {
-      const devEmail = (process.env.DEV_ADMIN_EMAIL || 'ildefonsojeptahashleyr@gmail.com').toLowerCase().trim();
+    const devEmail = (process.env.DEV_ADMIN_EMAIL || 'ildefonsojeptahashleyr@gmail.com').toLowerCase().trim();
+
+    const canonicalAccounts: Array<{
+      userId: string;
+      firstName: string;
+      lastName: string;
+      email: string;
+      defaultPassword?: string;
+      explicitHash?: string;
+      role: 'Superadmin' | 'Admin' | 'User';
+      rights: string[];
+    }> = [
+      {
+        userId: 'usr-admin1',
+        firstName: 'Admin',
+        lastName: 'One',
+        email: 'admin1@gmail.com',
+        defaultPassword: 'useradmin',
+        role: 'User',
+        rights: [
+          'add_customer', 'edit_customer',
+          'add_product', 'edit_product', 'add_price', 'edit_price',
+          'add_sale', 'edit_sale', 'view_sale_details', 'add_sale_detail', 'edit_sale_detail',
+          'add_employee', 'edit_employee', 'view_job_history',
+          'report_top_customers', 'report_product_master', 'report_top_products',
+          'report_active_employees', 'report_all_employees', 'report_employee_job_history', 'report_top_sales'
+        ],
+      },
+      {
+        userId: 'usr-admin2',
+        firstName: 'Admin',
+        lastName: 'Two',
+        email: 'admin2@gmail.com',
+        defaultPassword: 'useradmin',
+        role: 'Admin',
+        rights: CANONICAL_RIGHTS.map((r) => r.rightCode),
+      },
+      {
+        userId: 'usr-superadmin',
+        firstName: 'Hope',
+        lastName: 'Superadmin',
+        email: 'superadmin@hope.com',
+        defaultPassword: 'useradmin',
+        role: 'Superadmin',
+        rights: CANONICAL_RIGHTS.map((r) => r.rightCode),
+      },
+      {
+        userId: 'usr-dev-jeptah',
+        firstName: 'Jeptah Ashley',
+        lastName: 'Ildefonso',
+        email: devEmail,
+        defaultPassword: 'usersuperadmin',
+        explicitHash: envAdminHash,
+        role: 'Superadmin',
+        rights: CANONICAL_RIGHTS.map((r) => r.rightCode),
+      },
+    ];
+
+    for (const acc of canonicalAccounts) {
       const existing = await db.get<{ userId: string; passwordHash: string }>(
         'SELECT userId, passwordHash FROM USERS WHERE LOWER(email) = LOWER(?)',
-        [devEmail]
+        [acc.email]
       );
-      const devUserId = existing?.userId || 'usr-dev-jeptah';
+      const activeUserId = existing?.userId || acc.userId;
 
       if (!existing) {
+        const hashToUse = acc.explicitHash || (acc.defaultPassword ? bcrypt.hashSync(acc.defaultPassword, 10) : '');
         await db.run(
           `
           INSERT INTO USERS (userId, firstName, lastName, email, passwordHash, role, isBlocked, status, stamp, mustChangePassword, sessionVersion)
-          VALUES (?, ?, ?, ?, ?, 'Superadmin', 0, 'Active', ?, 0, 1)
+          VALUES (?, ?, ?, ?, ?, ?, 0, 'Active', ?, 0, 1)
         `,
           [
-            devUserId,
-            'Jeptah Ashley',
-            'Ildefonso',
-            devEmail,
-            envAdminHash,
+            activeUserId,
+            acc.firstName,
+            acc.lastName,
+            acc.email.toLowerCase(),
+            hashToUse,
+            acc.role,
             getStampString('CREATED', 'system'),
           ]
         );
-      } else if (existing.passwordHash !== envAdminHash) {
-        // Break-glass rotate developer account
+      } else if (acc.userId === 'usr-dev-jeptah' && acc.explicitHash && existing.passwordHash !== acc.explicitHash) {
+        // Break-glass rotate developer account if explicit env hash changed
         await db.run(
           `UPDATE USERS SET passwordHash = ?, role = 'Superadmin', status = 'Active', isBlocked = 0, sessionVersion = COALESCE(sessionVersion, 1) + 1 WHERE userId = ?`,
-          [envAdminHash, existing.userId]
+          [acc.explicitHash, existing.userId]
         );
       }
 
-      // Seed rights for developer account
-      for (const r of CANONICAL_RIGHTS) {
+      // Seed rights for the account
+      for (const rightCode of acc.rights) {
         await db.run(
           `
           INSERT OR IGNORE INTO USERRIGHTS (userId, rightCode)
           VALUES (?, ?)
         `,
-          [devUserId, r.rightCode]
+          [activeUserId, rightCode]
         );
       }
-    }
-  } catch (err: any) {
+    }  } catch (err: any) {
     console.warn('[auth-db] Database initialization note (e.g. read-only environment):', err?.message);
   }
 
