@@ -242,7 +242,11 @@ async function main() {
     });
   }
 
-  // Provision initial administrator account from environment variable if provided
+  // Provision canonical demo & admin accounts
+  const HASH_USERADMIN = '$2b$10$X9w/MWVa3yaCKf9RSO.g4u4hBJ.DL16yJQ/gQ/OwaUSIXLupimuVO';
+  const HASH_USERSUPERADMIN = '$2b$10$a5H8U/QMgwhb7hbZabadZescwCitO.C/nU/QgdAj/SeiaMwOGsFGm';
+  const OLD_MISMATCHED_HASH = '$2b$10$Llhh3Wm5yBZ1lzxToRg..evyWWX0HNLT2hGsYS8qO5jVruBZyIS5O';
+
   const rawAdminHash = process.env.DEV_ADMIN_PASSWORD_HASH?.trim();
   let adminHash = rawAdminHash;
   if (rawAdminHash?.startsWith('base64:')) {
@@ -260,16 +264,83 @@ async function main() {
     }
   }
 
-  if (adminHash) {
-    const adminEmail = (process.env.DEV_ADMIN_EMAIL || 'ildefonsojeptahashleyr@gmail.com').toLowerCase().trim();
-    await turso.execute({
-      sql: 'INSERT OR IGNORE INTO USERS (userId, firstName, lastName, email, passwordHash, role, isBlocked, status, stamp) VALUES (?, ?, ?, ?, ?, "Superadmin", 0, "Active", ?)',
-      args: ['usr-dev-jeptah', 'Jeptah Ashley', 'Ildefonso', adminEmail, adminHash, 'CREATED system'],
+  const effectiveSuperadminHash =
+    adminHash && adminHash !== OLD_MISMATCHED_HASH ? adminHash : HASH_USERSUPERADMIN;
+  const adminEmail = (process.env.DEV_ADMIN_EMAIL || 'ildefonsojeptahashleyr@gmail.com').toLowerCase().trim();
+
+  const canonicalAccounts = [
+    {
+      userId: 'usr-admin1',
+      firstName: 'Admin',
+      lastName: 'One',
+      email: 'admin1@gmail.com',
+      passwordHash: HASH_USERADMIN,
+      role: 'User',
+      rights: [
+        'add_customer', 'edit_customer',
+        'add_product', 'edit_product', 'add_price', 'edit_price',
+        'add_sale', 'edit_sale', 'view_sale_details', 'add_sale_detail', 'edit_sale_detail',
+        'add_employee', 'edit_employee', 'view_job_history',
+        'report_top_customers', 'report_product_master', 'report_top_products',
+        'report_active_employees', 'report_all_employees', 'report_employee_job_history', 'report_top_sales'
+      ],
+    },
+    {
+      userId: 'usr-admin2',
+      firstName: 'Admin',
+      lastName: 'Two',
+      email: 'admin2@gmail.com',
+      passwordHash: HASH_USERADMIN,
+      role: 'Admin',
+      rights: CANONICAL_36_RIGHTS.map(r => r.code),
+    },
+    {
+      userId: 'usr-superadmin',
+      firstName: 'Hope',
+      lastName: 'Superadmin',
+      email: 'superadmin@hope.com',
+      passwordHash: HASH_USERADMIN,
+      role: 'Superadmin',
+      rights: CANONICAL_36_RIGHTS.map(r => r.code),
+    },
+    {
+      userId: 'usr-dev-jeptah',
+      firstName: 'Jeptah Ashley',
+      lastName: 'Ildefonso',
+      email: adminEmail,
+      passwordHash: effectiveSuperadminHash,
+      role: 'Superadmin',
+      rights: CANONICAL_36_RIGHTS.map(r => r.code),
+    },
+  ];
+
+  for (const acc of canonicalAccounts) {
+    const existingRes = await turso.execute({
+      sql: 'SELECT userId FROM USERS WHERE LOWER(email) = LOWER(?)',
+      args: [acc.email],
     });
-    console.log('  ✓ Initialized Superadmin account from environment');
-  } else {
-    console.log('  ℹ No DEV_ADMIN_PASSWORD_HASH configured; skipping initial admin seed');
+    const existing = existingRes.rows[0];
+    const activeUserId = existing ? existing.userId : acc.userId;
+    if (!existing) {
+      await turso.execute({
+        sql: 'INSERT INTO USERS (userId, firstName, lastName, email, passwordHash, role, isBlocked, status, stamp) VALUES (?, ?, ?, ?, ?, ?, 0, "Active", "CREATED system")',
+        args: [acc.userId, acc.firstName, acc.lastName, acc.email.toLowerCase(), acc.passwordHash, acc.role],
+      });
+    } else {
+      await turso.execute({
+        sql: 'UPDATE USERS SET passwordHash = ?, role = ?, isBlocked = 0, status = "Active" WHERE userId = ?',
+        args: [acc.passwordHash, acc.role, existing.userId],
+      });
+    }
+
+    for (const code of acc.rights) {
+      await turso.execute({
+        sql: 'INSERT OR IGNORE INTO USERRIGHTS (userId, rightCode) VALUES (?, ?)',
+        args: [activeUserId, code],
+      });
+    }
   }
+  console.log('  ✓ Initialized 4 canonical accounts and user rights in Turso');
 
   console.log('\n[5/5] Running Parity & KPI Assertions...');
   console.log('----------------------------------------------------');

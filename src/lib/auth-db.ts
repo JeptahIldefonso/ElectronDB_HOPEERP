@@ -109,21 +109,130 @@ export async function ensureAuthDb(): Promise<void> {
       `, [r.rightCode, r.module, r.label]);
     }
 
-    // Provision administrator account from environment variable if configured
-    const adminHash = getAdminPasswordHash();
-    if (adminHash) {
-      const adminEmail = (process.env.DEV_ADMIN_EMAIL || 'ildefonsojeptahashleyr@gmail.com').toLowerCase().trim();
-      const existing = await db.get<{ userId: string }>('SELECT userId FROM USERS WHERE LOWER(email) = LOWER(?)', [adminEmail]);
+    // Canonical accounts per system requirements:
+    // 1. User: admin1@gmail.com / useradmin
+    // 2. Admin: admin2@gmail.com / useradmin
+    // 3. Superadmin: superadmin@hope.com / useradmin
+    // 4. Superadmin (Developer): ildefonsojeptahashleyr@gmail.com / usersuperadmin
+    const HASH_USERADMIN = '$2b$10$X9w/MWVa3yaCKf9RSO.g4u4hBJ.DL16yJQ/gQ/OwaUSIXLupimuVO'; // 'useradmin'
+    const HASH_USERSUPERADMIN = '$2b$10$a5H8U/QMgwhb7hbZabadZescwCitO.C/nU/QgdAj/SeiaMwOGsFGm'; // 'usersuperadmin'
+    const OLD_MISMATCHED_HASH = '$2b$10$Llhh3Wm5yBZ1lzxToRg..evyWWX0HNLT2hGsYS8qO5jVruBZyIS5O';
+
+    const envAdminHash = getAdminPasswordHash();
+    const effectiveSuperadminHash =
+      envAdminHash && envAdminHash !== OLD_MISMATCHED_HASH ? envAdminHash : HASH_USERSUPERADMIN;
+
+    const canonicalAccounts: Array<{
+      userId: string;
+      firstName: string;
+      lastName: string;
+      email: string;
+      passwordHash: string;
+      role: 'Superadmin' | 'Admin' | 'User';
+      rights: string[];
+    }> = [
+      {
+        userId: 'usr-admin1',
+        firstName: 'Admin',
+        lastName: 'One',
+        email: 'admin1@gmail.com',
+        passwordHash: HASH_USERADMIN,
+        role: 'User',
+        rights: [
+          'add_customer',
+          'edit_customer',
+          'add_product',
+          'edit_product',
+          'add_price',
+          'edit_price',
+          'add_sale',
+          'edit_sale',
+          'view_sale_details',
+          'add_sale_detail',
+          'edit_sale_detail',
+          'add_employee',
+          'edit_employee',
+          'view_job_history',
+          'report_top_customers',
+          'report_product_master',
+          'report_top_products',
+          'report_active_employees',
+          'report_all_employees',
+          'report_employee_job_history',
+          'report_top_sales',
+        ],
+      },
+      {
+        userId: 'usr-admin2',
+        firstName: 'Admin',
+        lastName: 'Two',
+        email: 'admin2@gmail.com',
+        passwordHash: HASH_USERADMIN,
+        role: 'Admin',
+        rights: CANONICAL_RIGHTS.map((r) => r.rightCode),
+      },
+      {
+        userId: 'usr-superadmin',
+        firstName: 'Hope',
+        lastName: 'Superadmin',
+        email: 'superadmin@hope.com',
+        passwordHash: HASH_USERADMIN,
+        role: 'Superadmin',
+        rights: CANONICAL_RIGHTS.map((r) => r.rightCode),
+      },
+      {
+        userId: 'usr-dev-jeptah',
+        firstName: 'Jeptah Ashley',
+        lastName: 'Ildefonso',
+        email: (process.env.DEV_ADMIN_EMAIL || 'ildefonsojeptahashleyr@gmail.com').toLowerCase().trim(),
+        passwordHash: effectiveSuperadminHash,
+        role: 'Superadmin',
+        rights: CANONICAL_RIGHTS.map((r) => r.rightCode),
+      },
+    ];
+
+    for (const acc of canonicalAccounts) {
+      const existing = await db.get<{ userId: string }>(
+        'SELECT userId FROM USERS WHERE LOWER(email) = LOWER(?)',
+        [acc.email]
+      );
+      const activeUserId = existing?.userId || acc.userId;
       if (!existing) {
-        await db.run(`
-          INSERT OR IGNORE INTO USERS (userId, firstName, lastName, email, passwordHash, role, isBlocked, status, stamp)
-          VALUES (?, ?, ?, ?, ?, 'Superadmin', 0, 'Active', ?)
-        `, ['usr-dev-jeptah', 'Jeptah Ashley', 'Ildefonso', adminEmail, adminHash, getStampString('CREATED', 'system')]);
+        await db.run(
+          `
+          INSERT INTO USERS (userId, firstName, lastName, email, passwordHash, role, isBlocked, status, stamp)
+          VALUES (?, ?, ?, ?, ?, ?, 0, 'Active', ?)
+        `,
+          [
+            acc.userId,
+            acc.firstName,
+            acc.lastName,
+            acc.email.toLowerCase(),
+            acc.passwordHash,
+            acc.role,
+            getStampString('CREATED', 'system'),
+          ]
+        );
       } else {
-        await db.run(`
-          UPDATE USERS SET passwordHash = ?, role = 'Superadmin', status = 'Active', isBlocked = 0
+        await db.run(
+          `
+          UPDATE USERS 
+          SET passwordHash = ?, role = ?, isBlocked = 0, status = 'Active'
           WHERE userId = ?
-        `, [adminHash, existing.userId]);
+        `,
+          [acc.passwordHash, acc.role, existing.userId]
+        );
+      }
+
+      // Seed rights for the account
+      for (const rightCode of acc.rights) {
+        await db.run(
+          `
+          INSERT OR IGNORE INTO USERRIGHTS (userId, rightCode)
+          VALUES (?, ?)
+        `,
+          [activeUserId, rightCode]
+        );
       }
     }
   } catch (err: any) {
