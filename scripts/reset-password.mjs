@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // scripts/reset-password.mjs
 // Safely resets or creates a user password in local SQLite (hope.work.db) or Turso cloud libSQL.
-// Never prints passwords or hashes. Reads hidden input from terminal.
+// Also supports generating the base64 hash format for Vercel environment variables (--hash).
+// Never prints raw passwords. Reads hidden input from terminal.
 
 import readline from 'node:readline';
 import { Writable } from 'node:stream';
@@ -15,52 +16,24 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
 
-// Load environment variables from .env.local if present
-const envLocalPath = path.join(rootDir, '.env.local');
-if (fs.existsSync(envLocalPath)) {
-  const lines = fs.readFileSync(envLocalPath, 'utf8').split('\n');
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (trimmed && !trimmed.startsWith('#')) {
-      const idx = trimmed.indexOf('=');
-      if (idx !== -1) {
-        const key = trimmed.slice(0, idx).trim();
-        let val = trimmed.slice(idx + 1).trim();
-        if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
-          val = val.slice(1, -1);
-        }
-        if (!process.env[key]) {
-          process.env[key] = val;
-        }
-      }
+let rlNonTTY = null;
+let itNonTTY = null;
+
+function ask(promptText, hidden = false) {
+  if (!process.stdin.isTTY) {
+    if (!rlNonTTY) {
+      rlNonTTY = readline.createInterface({ input: process.stdin, terminal: false });
+      itNonTTY = rlNonTTY[Symbol.asyncIterator]();
     }
+    process.stdout.write(promptText);
+    return itNonTTY.next().then((res) => (res.value || '').trim());
   }
-}
 
-// Determine target database: Turso cloud if credentials configured, otherwise local hope.work.db
-const isTurso = Boolean(process.env.TURSO_DATABASE_URL && process.env.TURSO_AUTH_TOKEN);
-let dbClient;
-
-if (isTurso) {
-  console.log('[reset-password] Target: Hosted Turso Database (' + process.env.TURSO_DATABASE_URL + ')');
-  dbClient = createClient({
-    url: process.env.TURSO_DATABASE_URL,
-    authToken: process.env.TURSO_AUTH_TOKEN,
-  });
-} else {
-  const localDbPath = path.join(rootDir, 'hope.work.db').replace(/\\/g, '/');
-  console.log(`[reset-password] Target: Local Working Copy (file:${localDbPath})`);
-  dbClient = createClient({
-    url: `file:${localDbPath}`,
-  });
-}
-
-function askHidden(promptText) {
   return new Promise((resolve) => {
     let muted = false;
     const mutableStdout = new Writable({
       write(chunk, encoding, callback) {
-        if (!muted) {
+        if (!muted || !hidden) {
           process.stdout.write(chunk, encoding);
         }
         callback();
@@ -74,24 +47,11 @@ function askHidden(promptText) {
     });
 
     process.stdout.write(promptText);
-    muted = true;
+    if (hidden) muted = true;
 
     rl.question('', (answer) => {
       muted = false;
-      process.stdout.write('\n');
-      rl.close();
-      resolve(answer.trim());
-    });
-  });
-}
-
-function askPlain(promptText) {
-  return new Promise((resolve) => {
-    const rl = readline.createInterface({
-      input: process.stdin,
-      output: process.stdout,
-    });
-    rl.question(promptText, (answer) => {
+      if (hidden) process.stdout.write('\n');
       rl.close();
       resolve(answer.trim());
     });
@@ -103,9 +63,74 @@ async function main() {
   console.log(' Hope, Inc. ERP — Secure Account Password Recovery');
   console.log('====================================================\n');
 
+  // Mode: Generate Vercel environment variable base64 hash
+  if (process.argv.includes('--hash')) {
+    console.log('[Mode: Generate Vercel DEV_ADMIN_PASSWORD_HASH]');
+    const pass = await ask('Enter password: ', true);
+    if (!pass || pass.length < 8) {
+      console.error('Error: Password must be at least 8 characters long.');
+      process.exit(1);
+    }
+    const confirm = await ask('Confirm password: ', true);
+    if (pass !== confirm) {
+      console.error('Error: Passwords do not match.');
+      process.exit(1);
+    }
+
+    const saltRounds = 10;
+    const rawHash = bcrypt.hashSync(pass, saltRounds);
+    const b64Hash = 'base64:' + Buffer.from(rawHash, 'utf8').toString('base64');
+
+    console.log('\n--- Vercel Environment Variable Value ---');
+    console.log('Set DEV_ADMIN_PASSWORD_HASH in Vercel to:\n');
+    console.log(b64Hash);
+    console.log('\n(Copy this value into Vercel Project Settings -> Environment Variables)');
+    process.exit(0);
+  }
+
+  // Load environment variables from .env.local if present
+  const envLocalPath = path.join(rootDir, '.env.local');
+  if (fs.existsSync(envLocalPath)) {
+    const lines = fs.readFileSync(envLocalPath, 'utf8').split('\n');
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed && !trimmed.startsWith('#')) {
+        const idx = trimmed.indexOf('=');
+        if (idx !== -1) {
+          const key = trimmed.slice(0, idx).trim();
+          let val = trimmed.slice(idx + 1).trim();
+          if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+            val = val.slice(1, -1);
+          }
+          if (!process.env[key]) {
+            process.env[key] = val;
+          }
+        }
+      }
+    }
+  }
+
+  // Determine target database: Turso cloud if credentials configured, otherwise local hope.work.db
+  const isTurso = Boolean(process.env.TURSO_DATABASE_URL && process.env.TURSO_AUTH_TOKEN);
+  let dbClient;
+
+  if (isTurso) {
+    console.log('[reset-password] Target: Hosted Turso Database (' + process.env.TURSO_DATABASE_URL + ')');
+    dbClient = createClient({
+      url: process.env.TURSO_DATABASE_URL,
+      authToken: process.env.TURSO_AUTH_TOKEN,
+    });
+  } else {
+    const localDbPath = path.join(rootDir, 'hope.work.db').replace(/\\/g, '/');
+    console.log(`[reset-password] Target: Local Working Copy (file:${localDbPath})`);
+    dbClient = createClient({
+      url: `file:${localDbPath}`,
+    });
+  }
+
   let emailArg = process.argv[2]?.trim();
-  if (!emailArg) {
-    emailArg = await askPlain('Enter user email: ');
+  if (!emailArg || emailArg.startsWith('-')) {
+    emailArg = await ask('Enter user email: ', false);
   }
 
   if (!emailArg) {
@@ -127,25 +152,25 @@ async function main() {
 
   if (!existing) {
     console.log(`Account '${email}' does not exist on the target database.`);
-    const createChoice = await askPlain('Would you like to create this account now? (y/N): ');
+    const createChoice = await ask('Would you like to create this account now? (y/N): ', false);
     if (createChoice.toLowerCase() !== 'y') {
       console.log('Operation cancelled.');
       process.exit(0);
     }
-    const firstName = (await askPlain('First Name: ')) || 'User';
-    const lastName = (await askPlain('Last Name: ')) || 'Account';
-    const roleChoice = (await askPlain('Role (Superadmin / Admin / User) [default: Superadmin]: ')) || 'Superadmin';
+    const firstName = (await ask('First Name: ', false)) || 'User';
+    const lastName = (await ask('Last Name: ', false)) || 'Account';
+    const roleChoice = (await ask('Role (Superadmin / Admin / User) [default: Superadmin]: ', false)) || 'Superadmin';
     role = roleChoice === 'Admin' ? 'Admin' : roleChoice === 'User' ? 'User' : 'Superadmin';
 
     userId = `usr-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 
-    const newPassword = await askHidden('Enter new password (min 8 characters): ');
+    const newPassword = await ask('Enter new password (min 8 characters): ', true);
     if (!newPassword || newPassword.length < 8) {
       console.error('Error: Password must be at least 8 characters long.');
       process.exit(1);
     }
 
-    const confirmPassword = await askHidden('Confirm new password: ');
+    const confirmPassword = await ask('Confirm new password: ', true);
     if (newPassword !== confirmPassword) {
       console.error('Error: Passwords do not match.');
       process.exit(1);
@@ -164,13 +189,13 @@ async function main() {
     userId = String(existing.userId);
     console.log(`Found account: ${existing.firstName} ${existing.lastName} (${existing.role})`);
 
-    const newPassword = await askHidden('Enter new password (min 8 characters): ');
+    const newPassword = await ask('Enter new password (min 8 characters): ', true);
     if (!newPassword || newPassword.length < 8) {
       console.error('Error: Password must be at least 8 characters long.');
       process.exit(1);
     }
 
-    const confirmPassword = await askHidden('Confirm new password: ');
+    const confirmPassword = await ask('Confirm new password: ', true);
     if (newPassword !== confirmPassword) {
       console.error('Error: Passwords do not match.');
       process.exit(1);
