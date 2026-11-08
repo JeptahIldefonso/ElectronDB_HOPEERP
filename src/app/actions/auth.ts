@@ -216,9 +216,8 @@ export async function loginAction(formData: FormData): Promise<{ error?: string 
     if (err?.message === 'NEXT_REDIRECT' || err?.digest?.startsWith('NEXT_REDIRECT')) {
       throw err;
     }
-    console.error('[loginAction] Unhandled error:', err);
-    const msg = err?.message || '';
-    return { error: msg ? `Authentication error: ${msg}` : 'An unexpected authentication error occurred. Please try again.' };
+    console.error('[loginAction] Server error:', err);
+    return { error: 'Sign-in is temporarily unavailable. Please try again shortly.' };
   }
 }
 
